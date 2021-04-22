@@ -205,12 +205,14 @@ def test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, optio
     return p, r
 
 
-def train_test_val(options, device='cpu'):
+def train_test_val(options, device='cpu', saved_params_dir=None):
     kg = Temp_kg_loader(options.train_path, options.test_path, options.valid_path, truncate=options.truncate_datasets, device=device)
     trainloader = kg.get_trainloader(batch_size=options.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=options.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=options.batch_size, shuffle=True)
     model = BoxTEmp(options.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
+    if saved_params_dir is not None:
+        model.load_state_dict(torch.load(saved_params_dir))
     optimizer = torch.optim.Adam(model.params(), lr=options.learning_rate)
     loss_fn = BoxELoss(options)
 
@@ -236,17 +238,16 @@ def run_train_test_binary(options, device='cpu'):
                              combined_loader=combined_loader)
 
 
-def main():
+def run_loop(saved_params_dir=None):
     print(sys.getrecursionlimit())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Running on {}'.format(device))
     options = parse_args(None)
-    metrics, progress, model_params = train_test_val(options, device=device)
+    metrics, progress, model_params = train_test_val(options, device=device, saved_params_dir=saved_params_dir)
     print('FINAL TEST METRICS')
     print(metrics)
     torch.save(progress, options.progress_filename)
     torch.save(model_params, options.params_filename)
 
-
 if __name__ == '__main__':
-    main()
+    run_loop()
