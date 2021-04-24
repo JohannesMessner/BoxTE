@@ -17,7 +17,7 @@ from data_utils import Temp_kg_loader
 
 def parse_args(args):
     # Hyper-Parameters
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
     parser.add_argument('--train_path', default='./train.txt',
                         help='Path to training dataset')
     parser.add_argument('--valid_path', default='./valid.txt',
