@@ -138,7 +138,6 @@ class BoxTEmp():
 
 class BoxELoss():
     def __init__(self, options):
-        print(options.ignore_time)
         if options.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': options.margin, 'w': 1 / options.loss_k, 'ignore_time': options.ignore_time}

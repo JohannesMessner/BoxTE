@@ -3,6 +3,7 @@ import numpy as np
 import copy
 import sys
 import argparse
+from datetime import datetime
 from metrics import mean_rank
 from metrics import mean_rec_rank
 from metrics import hits_at_k
@@ -246,8 +247,11 @@ def run_loop(saved_params_dir=None):
     metrics, progress, model_params = train_test_val(options, device=device, saved_params_dir=saved_params_dir)
     print('FINAL TEST METRICS')
     print(metrics)
-    torch.save(progress, options.progress_filename)
-    torch.save(model_params, options.params_filename)
+    dateTimeObj = datetime.now()
+    timestamp = '' + str(dateTimeObj.year) + str(dateTimeObj.month) + str(dateTimeObj.day) + str(dateTimeObj.hour)\
+                + str(dateTimeObj.minute) + str(dateTimeObj.second)
+    torch.save(progress, options.progress_filename + '-' + timestamp)
+    torch.save(model_params, options.params_filename + '-' + timestamp)
 
 if __name__ == '__main__':
     run_loop()
