@@ -148,7 +148,6 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, option
 
 
 def test(kg, dataloader, model, loss_fn, optimizer, options, device='cpu'):
-    # TODO s.t. batch does not need to go forward twice (i.e. create forward_negatives in model)
     with torch.no_grad():
         batch_sizes = []
         mr = []
@@ -240,7 +239,6 @@ def run_train_test_binary(options, device='cpu'):
 
 
 def run_loop(saved_params_dir=None):
-    print(sys.getrecursionlimit())
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Running on {}'.format(device))
     options = parse_args(None)
