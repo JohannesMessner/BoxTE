@@ -25,10 +25,10 @@ def parse_args(args):
                         help='Path to validation dataset')
     parser.add_argument('--test_path', default='./test.txt',
                         help='Path to test dataset')
-    parser.add_argument('--progress_filename', default='progress.pt',
-                        help='Filename given to validation progress data.')
-    parser.add_argument('--params_filename', default='params.pt',
-                        help='Filename given to save model parameters / state dict.')
+    parser.add_argument('--progress_filename', default='progress',
+                        help='Filename given to validation progress data. File extension and timestamp are added automatically.')
+    parser.add_argument('--params_filename', default='params',
+                        help='Filename given to save model parameters / state dict.  File extension and timestamp are added automatically.')
     parser.add_argument('--margin', default=0.2, type=float,
                         help='Loss margin.')
     parser.add_argument('--num_epochs', default=10, type=int,
@@ -248,8 +248,8 @@ def run_loop(saved_params_dir=None):
     dateTimeObj = datetime.now()
     timestamp = '' + str(dateTimeObj.year) + str(dateTimeObj.month) + str(dateTimeObj.day) + str(dateTimeObj.hour)\
                 + str(dateTimeObj.minute) + str(dateTimeObj.second)
-    torch.save(progress, options.progress_filename + '-' + timestamp)
-    torch.save(model_params, options.params_filename + '-' + timestamp)
+    torch.save(progress, options.progress_filename + '-' + timestamp + '.pt')
+    torch.save(model_params, options.params_filename + '-' + timestamp + '.pt')
 
 if __name__ == '__main__':
     run_loop()
