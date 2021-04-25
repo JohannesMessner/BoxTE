@@ -29,6 +29,10 @@ def parse_args(args):
                         help='Filename given to validation progress data. File extension and timestamp are added automatically.')
     parser.add_argument('--params_filename', default='params',
                         help='Filename given to save model parameters / state dict.  File extension and timestamp are added automatically.')
+    parser.add_argument('--results_filename', default='test_results',
+                        help='Filename given to final results/metrics. File extension and timestamp are added automatically.')
+    parser.add_argument('--info_filename', default='info',
+                        help='Filename given to information file. File extension and timestamp are added automatically.')
     parser.add_argument('--margin', default=0.2, type=float,
                         help='Loss margin.')
     parser.add_argument('--num_epochs', default=10, type=int,
@@ -248,8 +252,13 @@ def run_loop(saved_params_dir=None):
     dateTimeObj = datetime.now()
     timestamp = '' + str(dateTimeObj.year) + str(dateTimeObj.month) + str(dateTimeObj.day) + str(dateTimeObj.hour)\
                 + str(dateTimeObj.minute) + str(dateTimeObj.second)
-    torch.save(progress, options.progress_filename + '-' + timestamp + '.pt')
-    torch.save(model_params, options.params_filename + '-' + timestamp + '.pt')
+    torch.save(progress, timestamp + '-' + options.progress_filename + '.pt')
+    torch.save(model_params, timestamp + '-' + options.params_filename + '.pt')
+    with open(timestamp + '-' + options.results_filename + '.txt', 'w') as f:
+        print(metrics, file=f)
+    with open(timestamp + '-' + options.info_filename + '.txt', 'w') as f:
+        print(options, file=f)
+
 
 if __name__ == '__main__':
     run_loop()
