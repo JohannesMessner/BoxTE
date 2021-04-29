@@ -261,4 +261,5 @@ def run_loop(saved_params_dir=None):
 
 
 if __name__ == '__main__':
+    print('Execution started')
     run_loop()
