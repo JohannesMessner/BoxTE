@@ -55,7 +55,6 @@ class BoxTEmp():
         return self
 
     def state_dict(self):
-        # TODO need to copy and detach tensors?
         return {'r head box': self.r_head_boxes.state_dict(), 'r tail box': self.r_tail_boxes.state_dict(),
                 'entity bases': self.entity_bases.state_dict(), 'entity bumps': self.entity_bumps.state_dict(),
                 'time head box': self.time_head_boxes.state_dict(), 'time tail box': self.time_tail_boxes.state_dict()}
