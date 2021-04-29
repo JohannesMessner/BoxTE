@@ -30,17 +30,10 @@ def retrieval_metrics(positive_embs, head_c_embs, tail_c_embs, filter_head, filt
 
 
 def rank(positive_embs, negative_embs, filter_idx):
+    filter_idx = filter_idx.transpose(0,1)  # TODO modify data handling to make this unnecessary
     scores = score(*positive_embs)
-    rh, th, eh, et, time_h, time_t = negative_embs
-    ranks = []
-    for i, s in enumerate(scores):
-        counterscores = score(rh[i], th[i], eh[i], et[i], time_h[i], time_t[i])
-        r = 1
-        for i_c, cs in enumerate(counterscores):
-            if cs < s and filter_idx[i, i_c]:  # TODO > or < ?
-                r += 1
-        ranks.append(r)
-    return torch.tensor(ranks)
+    counterscores = score(*negative_embs)
+    return ((scores > counterscores) * filter_idx).sum(dim=0) + 1  # TODO is the +1 needed to meet to def of rank?
 
 
 def mean_rank(positive_embs, head_c_embs, tail_c_embs, filter_head, filter_tail):

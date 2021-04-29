@@ -100,7 +100,7 @@ class BoxTEmp():
 
         # (almost?) all of the below could be one tensor...
         r_head_boxes = self.r_head_boxes(rel_idx).view(
-            (len(rel_idx), 2, self.embedding_dim))  # dim 1 distinguishes between upper and lower boundries
+            (len(rel_idx), 2, self.embedding_dim))  # dim 1 distinguishes between upper and lower boundaries
         r_tail_boxes = self.r_tail_boxes(rel_idx).view((len(rel_idx), 2, self.embedding_dim))
         head_bases = self.entity_bases(e_h_idx)
         head_bumps = self.entity_bumps(e_h_idx)
@@ -108,40 +108,36 @@ class BoxTEmp():
         tail_bumps = self.entity_bumps(e_t_idx)
         time_head_boxes = self.time_head_boxes(time_idx).view((len(time_idx), 2, self.embedding_dim))
         time_tail_boxes = self.time_tail_boxes(time_idx).view((len(time_idx), 2, self.embedding_dim))
-        return r_head_boxes, r_tail_boxes, head_bases + tail_bumps, tail_bases + head_bumps, time_head_boxes, time_tail_boxes
+        return torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=1),\
+               torch.stack((r_head_boxes, r_tail_boxes), dim=1),\
+               torch.stack((time_head_boxes, time_tail_boxes), dim=1)
 
     def forward_negatives(self, negatives):
-        rhs = []  # relation head
-        rts = []  # relation tail
-        ehs = []  # entity head
-        ets = []  # entity tail
-        ths = []  # time head
-        tts = []  # time tail
+        # TODO vectorize this loop
+        es, rs, ts = [], [], []
         for i, n_r in enumerate(negatives[1]):
-            rh, rt, eh, et, time_h, time_t = self.compute_embeddings(
+            entities, relations, times = self.compute_embeddings(
                 [negatives[0, i], n_r, negatives[2, i], negatives[3, i]])
-            rhs.append(rh)
-            rts.append(rt)
-            ehs.append(eh)
-            ets.append(et)
-            ths.append(time_h)
-            tts.append(time_t)
-        return torch.stack(rhs), torch.stack(rts), torch.stack(ehs), torch.stack(ets), torch.stack(ths), torch.stack(
-            tts)
+            es.append(entities)
+            rs.append(relations)
+            ts. append(times)
+        # TODO avoid transpose
+        return torch.stack(es).transpose(0,1), torch.stack(rs).transpose(0,1), torch.stack(ts).transpose(0,1)
 
     def forward(self, positives, negatives):
-        positive_emb = self.compute_embeddings(positives)
+        entities, relations, times = self.compute_embeddings(positives)
+        positive_emb = entities.unsqueeze(0), relations.unsqueeze(0), times.unsqueeze(0)
         negative_emb = self.forward_negatives(negatives)
         return positive_emb, negative_emb
 
 
 class BoxELoss():
-    def __init__(self, options):
+    def __init__(self, options, new=False):
         if options.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': options.margin, 'w': 1 / options.loss_k, 'ignore_time': options.ignore_time}
         elif options.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
-            self.loss_fn = adversarial_loss
+            self.loss_fn = adversarial_loss_old
             self.fn_kwargs = {'gamma': options.margin, 'alpha': options.adversarial_temp,
                               'ignore_time': options.ignore_time}
 
@@ -158,22 +154,6 @@ class BoxEBinScore():
                             ignore_time=self.ignore_time)
 
 
-def dist(entity_emb, boxes):
-    # assumes box is tensor of shape (batch_size, 2, embedding_dim)
-    # so it contains multiple boxes, where each box has lower and upper boundries in embdding_dim dimensions
-    # e.g box[n, 0, :] is the lower boundry of the n-th box
-
-    lb = boxes[:, 0, :]  # lower boundries
-    ub = boxes[:, 1, :]  # upper boundries
-    c = (lb + ub) / 2  # centres
-    w = ub - lb + 1  # widths
-    k = 0.5 * (w - 1) * (w - 1 / w)
-    d = torch.where(torch.logical_and(torch.ge(entity_emb, lb), torch.le(entity_emb, ub)),
-                    torch.abs(entity_emb - c) / w,
-                    torch.abs(entity_emb - c) * w - k)
-    return d
-
-
 def binary_dist(entity_emb, boxes):
     lb = boxes[:, 0, :]  # lower boundries
     ub = boxes[:, 1, :]  # upper boundries
@@ -183,16 +163,32 @@ def binary_dist(entity_emb, boxes):
     return torch.logical_and(torch.ge(entity_emb, lb), torch.le(entity_emb, ub))
 
 
-def score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbox, order=2, ignore_time=False):
-    # once the representaion of r is known this should probably just take r and the entities
-    a = torch.norm(dist(e_head, r_headbox), p=order, dim=1)
-    b = torch.norm(dist(e_tail, r_tailbox), p=order, dim=1)
-    c = torch.norm(dist(e_head, time_headbox), p=order, dim=1)
-    d = torch.norm(dist(e_tail, time_tailbox), p=order, dim=1)
-    if ignore_time:
-        c = 0
-        d = 0
-    return a + b + c + d
+def dist(entity_emb, boxes):
+    # assumes box is tensor of shape (nb_examples, batch_size, arity, 2, embedding_dim)
+    # nb_examples is relevant for negative samples; for positive examples it is 1
+    # so it contains multiple boxes, where each box has lower and upper boundries in embdding_dim dimensions
+    # e.g box[0, n, 0, :] is the lower boundry of the n-th box
+    #
+    # entities are of shape (nb_examples, batch_size, arity, embedding_dim)
+
+    lb = boxes[:, :, :, 0, :]  # lower boundaries
+    ub = boxes[:, :, :, 1, :]  # upper boundaries
+    c = (lb + ub) / 2  # centres
+    w = ub - lb + 1  # widths
+    k = 0.5 * (w - 1) * (w - 1 / w)
+    d = torch.where(torch.logical_and(torch.ge(entity_emb, lb), torch.le(entity_emb, ub)),
+                    torch.abs(entity_emb - c) / w,
+                    torch.abs(entity_emb - c) * w - k)
+    return d
+
+
+def score(entities, relations, times, ignore_time=False, order=2, time_weight=0.5):
+    d_r = dist(entities, relations).norm(dim=3, p=order).sum(dim=2)
+    if not ignore_time:
+        d_t = dist(entities, times).norm(dim=3, p=order).sum(dim=2)
+        return time_weight * d_t + (1 - time_weight) * d_r
+    else:
+        return d_r
 
 
 def binary_score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbox, ignore_time=False):
@@ -206,7 +202,7 @@ def binary_score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbo
     return torch.logical_and(a, torch.logical_and(b, torch.logical_and(c, d)))
 
 
-def uniform_loss(positive_tuple, negative_tuples, gamma, w, ignore_time=False):
+def uniform_loss(positives, negatives, gamma, w, ignore_time=False):
     # An example of the following description can be found in our google doc (https://docs.google.com/document/d/1XltuO8IeyYSb8gLNA0lO8nLOQSqhe-Ub5gOnIc0-89w/edit?usp=sharing)
     # If there is a more natural way to represent this data, please let me know :)
     # positive triple: tuple of form (head_boxes, tail_boxes, head_entities, tail_entities)
@@ -221,21 +217,18 @@ def uniform_loss(positive_tuple, negative_tuples, gamma, w, ignore_time=False):
     #     n_tail_entities: same as head_entities
     # w == 1/k (see RotatE-paper)
     # headbox, tailbox, e_head, e_tail = positive_triple
-
-    s1 = - torch.log(torch.sigmoid(gamma - score(*positive_tuple, ignore_time=ignore_time)))
-    s2_terms = []
-    n_head_boxes, n_tail_boxes, n_head_e, n_tail_e, n_time_headboxes, n_time_tailboxes = negative_tuples
-    if not torch.is_tensor(w):
-        w = torch.tensor([w]).repeat(len(n_head_boxes))
-    for i in range(len(n_head_boxes)):
-        s2_terms.append(w[i] * torch.log(torch.sigmoid(
-            score(n_head_boxes[i], n_tail_boxes[i], n_head_e[i], n_tail_e[i], n_time_headboxes[i], n_time_tailboxes[i],
-                  ignore_time=ignore_time) - gamma)))
-    s2 = torch.sum(torch.stack(s2_terms), dim=1)
+    s1 = - torch.log(torch.sigmoid(gamma - score(*positives, ignore_time=ignore_time)))
+    s2 = torch.sum(w * torch.log(torch.sigmoid(score(*negatives, ignore_time=ignore_time) - gamma)), dim=0)
     return torch.mean(s1 - s2)
 
 
 def triple_probs(negative_triples, alpha):
+    scores = (score(*negative_triples) * alpha).exp()
+    div = scores.sum()
+    return scores / div
+
+
+def triple_probs_old(negative_triples, alpha):
     n_head_boxes, n_tail_boxes, n_head_e, n_tail_e, n_time_head, n_time_tail = negative_triples
     scores = []
     for i in range(len(n_head_boxes)):
@@ -246,6 +239,6 @@ def triple_probs(negative_triples, alpha):
     return torch.div(scores, div)
 
 
-def adversarial_loss(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
-    triple_weights = triple_probs(negative_triples, alpha)
+def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
+    triple_weights = triple_probs_old(negative_triples, alpha)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights, ignore_time=ignore_time)
