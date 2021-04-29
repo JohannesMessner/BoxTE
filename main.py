@@ -4,6 +4,7 @@ import copy
 import sys
 import os
 import argparse
+import pprint
 from datetime import datetime
 from metrics import mean_rank
 from metrics import mean_rec_rank
@@ -256,7 +257,7 @@ def save_data(options, metrics, model_params, progress):
     with open(options.results_dir + timestamp + '-' + options.results_filename + '.txt', 'w') as f:
         print(metrics, file=f)
     with open(options.results_dir + timestamp + '-' + options.info_filename + '.txt', 'w') as f:
-        print(options, file=f)
+        pprint.pprint(vars(options), stream=f)
 
 
 def run_loop(saved_params_dir=None):
