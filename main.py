@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import copy
 import sys
+import os
 import argparse
 from datetime import datetime
 from metrics import mean_rank
@@ -33,6 +34,8 @@ def parse_args(args):
                         help='Filename given to final results/metrics. File extension and timestamp are added automatically.')
     parser.add_argument('--info_filename', default='info',
                         help='Filename given to information file. File extension and timestamp are added automatically.')
+    parser.add_argument('--results_dir', default='',
+                        help='Directory results, params and info will be saved into.')
     parser.add_argument('--margin', default=0.2, type=float,
                         help='Loss margin.')
     parser.add_argument('--num_epochs', default=10, type=int,
@@ -242,6 +245,20 @@ def run_train_test_binary(options, device='cpu'):
                              combined_loader=combined_loader)
 
 
+def save_data(options, metrics, model_params, progress):
+    date_time_now = datetime.now()
+    timestamp = '' + str(date_time_now.year) + str(date_time_now.month) + str(date_time_now.day) + str(date_time_now.hour) \
+                + str(date_time_now.minute) + str(date_time_now.second)
+    if not os.path.exists(options.results_dir):
+        os.makedirs(options.results_dir)
+    torch.save(progress, options.results_dir + timestamp + '-' + options.progress_filename + '.pt')
+    torch.save(model_params, options.results_dir + timestamp + '-' + options.params_filename + '.pt')
+    with open(options.results_dir + timestamp + '-' + options.results_filename + '.txt', 'w') as f:
+        print(metrics, file=f)
+    with open(options.results_dir + timestamp + '-' + options.info_filename + '.txt', 'w') as f:
+        print(options, file=f)
+
+
 def run_loop(saved_params_dir=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Running on {}'.format(device))
@@ -249,15 +266,7 @@ def run_loop(saved_params_dir=None):
     metrics, progress, model_params = train_test_val(options, device=device, saved_params_dir=saved_params_dir)
     print('FINAL TEST METRICS')
     print(metrics)
-    dateTimeObj = datetime.now()
-    timestamp = '' + str(dateTimeObj.year) + str(dateTimeObj.month) + str(dateTimeObj.day) + str(dateTimeObj.hour)\
-                + str(dateTimeObj.minute) + str(dateTimeObj.second)
-    torch.save(progress, timestamp + '-' + options.progress_filename + '.pt')
-    torch.save(model_params, timestamp + '-' + options.params_filename + '.pt')
-    with open(timestamp + '-' + options.results_filename + '.txt', 'w') as f:
-        print(metrics, file=f)
-    with open(timestamp + '-' + options.info_filename + '.txt', 'w') as f:
-        print(options, file=f)
+    save_data(options, metrics, model_params, progress)
 
 
 if __name__ == '__main__':
