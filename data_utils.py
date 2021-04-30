@@ -205,7 +205,7 @@ class Temp_kg_loader():  # wrapper for dataloader
         filtering_done = False
         while not filtering_done:
             sampled_triples, filtering_done = self.resample(sampled_tuples, sampling_mode)
-        return sampled_tuples.reshape((4, batch_size, nb_samples)).long()
+        return sampled_tuples.reshape((4, batch_size, nb_samples)).long().transpose(0,1).transpose(0,2)
 
     def compute_filter_idx(self, tuples):
         idx = torch.ones_like(tuples[0])
@@ -239,7 +239,7 @@ class Temp_kg_loader():  # wrapper for dataloader
         sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
         filter_idx = self.compute_filter_idx(
             sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        return sampled_tuples, filter_idx
+        return sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
 
     '''
     Replaces head by all other entities and filters out known positives
@@ -262,7 +262,7 @@ class Temp_kg_loader():  # wrapper for dataloader
         sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
         filter_idx = self.compute_filter_idx(
             sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        return sampled_tuples, filter_idx
+        return sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
 
     def to(self, device):
         self.device = device

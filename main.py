@@ -84,7 +84,7 @@ def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, 
     for i_epoch in range(options.num_epochs):
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
-            data = torch.stack(data).to(device)
+            data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
             negatives = kg.sample_negatives(data, options.num_negative_samples, options.neg_sampling_type)
             positive_emb, negative_emb = model(data, negatives)
@@ -125,9 +125,9 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, option
     for i_epoch in range(options.num_epochs):
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
-            data = torch.stack(data).to(device)
+            data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
-            negatives = kg.sample_negatives(data, options.num_negative_samples, options.neg_sampling_type)
+            negatives = kg.sample_negatives(data.squeeze(), options.num_negative_samples, options.neg_sampling_type)
             positive_emb, negative_emb = model(data, negatives)
             loss = loss_fn(positive_emb, negative_emb)
             epoch_losses.append(loss.item())
@@ -165,9 +165,9 @@ def test(kg, dataloader, model, loss_fn, optimizer, options, device='cpu'):
         # h_at_5 = []
         h_at_10 = []
         for i_batch, batch in enumerate(dataloader):
-            batch = torch.stack(batch).to(device)
-            head_corrupts, head_f = kg.corrupt_head(batch)
-            tail_corrupts, tail_f = kg.corrupt_tail(batch)
+            batch = torch.stack(batch).to(device).unsqueeze(0)
+            head_corrupts, head_f = kg.corrupt_head(batch.squeeze())
+            tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze())
             embeddings, head_c_embeddings = model.forward(batch, head_corrupts)
             tail_c_embeddings = model.forward_negatives(tail_corrupts)
             batch_sizes.append(len(batch[0]))
@@ -196,7 +196,7 @@ def test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, optio
     with torch.no_grad():
         tps, tns, fps, fns = [], [], [], []  # true positives, true negatives, false p's, false n's
         for i_batch, batch in enumerate(testloader):
-            batch = torch.stack(batch).to(device)
+            batch = torch.stack(batch).to(device).unsqueeze(0)
             head_corrupts, head_f = kg.corrupt_head(batch)
             tail_corrupts, tail_f = kg.corrupt_tail(batch)
             embeddings, head_c_embeddings = model.forward(batch, head_corrupts)

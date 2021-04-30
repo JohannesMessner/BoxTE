@@ -93,40 +93,30 @@ class BoxTEmp():
         return d
 
     def compute_embeddings(self, tuples):
-        rel_idx = self.get_r_idx_by_id(tuples[1]).to(self.device)
-        e_h_idx = self.get_e_idx_by_id(tuples[0]).to(self.device)
-        e_t_idx = self.get_e_idx_by_id(tuples[2]).to(self.device)
-        time_idx = tuples[3]
+        nb_examples, _, batch_size = tuples.shape
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        time_idx = tuples[:, 3]
 
         # (almost?) all of the below could be one tensor...
-        r_head_boxes = self.r_head_boxes(rel_idx).view(
-            (len(rel_idx), 2, self.embedding_dim))  # dim 1 distinguishes between upper and lower boundaries
-        r_tail_boxes = self.r_tail_boxes(rel_idx).view((len(rel_idx), 2, self.embedding_dim))
+        r_head_boxes = self.r_head_boxes(rel_idx).view((nb_examples, batch_size, 2, self.embedding_dim))  # dim 2 distinguishes between upper and lower boundaries
+        r_tail_boxes = self.r_tail_boxes(rel_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
         head_bases = self.entity_bases(e_h_idx)
         head_bumps = self.entity_bumps(e_h_idx)
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
-        time_head_boxes = self.time_head_boxes(time_idx).view((len(time_idx), 2, self.embedding_dim))
-        time_tail_boxes = self.time_tail_boxes(time_idx).view((len(time_idx), 2, self.embedding_dim))
-        return torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=1),\
-               torch.stack((r_head_boxes, r_tail_boxes), dim=1),\
-               torch.stack((time_head_boxes, time_tail_boxes), dim=1)
+        time_head_boxes = self.time_head_boxes(time_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
+        time_tail_boxes = self.time_tail_boxes(time_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
+        return torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2),\
+               torch.stack((r_head_boxes, r_tail_boxes), dim=2),\
+               torch.stack((time_head_boxes, time_tail_boxes), dim=2)
 
     def forward_negatives(self, negatives):
-        # TODO vectorize this loop
-        es, rs, ts = [], [], []
-        for i, n_r in enumerate(negatives[1]):
-            entities, relations, times = self.compute_embeddings(
-                [negatives[0, i], n_r, negatives[2, i], negatives[3, i]])
-            es.append(entities)
-            rs.append(relations)
-            ts. append(times)
-        # TODO avoid transpose
-        return torch.stack(es).transpose(0,1), torch.stack(rs).transpose(0,1), torch.stack(ts).transpose(0,1)
+        return self.compute_embeddings(negatives)
 
     def forward(self, positives, negatives):
-        entities, relations, times = self.compute_embeddings(positives)
-        positive_emb = entities.unsqueeze(0), relations.unsqueeze(0), times.unsqueeze(0)
+        positive_emb = self.compute_embeddings(positives)
         negative_emb = self.forward_negatives(negatives)
         return positive_emb, negative_emb
 
@@ -228,17 +218,6 @@ def triple_probs(negative_triples, alpha):
     return scores / div
 
 
-def triple_probs_old(negative_triples, alpha):
-    n_head_boxes, n_tail_boxes, n_head_e, n_tail_e, n_time_head, n_time_tail = negative_triples
-    scores = []
-    for i in range(len(n_head_boxes)):
-        scores.append(torch.exp(
-            alpha * score(n_head_boxes[i], n_tail_boxes[i], n_head_e[i], n_tail_e[i], n_time_head[i], n_time_tail[i])))
-    scores = torch.stack(scores)
-    div = torch.repeat_interleave(torch.sum(scores, dim=1).unsqueeze(1), repeats=scores.shape[1], dim=1)
-    return torch.div(scores, div)
-
-
 def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
-    triple_weights = triple_probs_old(negative_triples, alpha)
+    triple_weights = triple_probs(negative_triples, alpha)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights, ignore_time=ignore_time)

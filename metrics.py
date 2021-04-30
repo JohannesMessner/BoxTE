@@ -30,23 +30,25 @@ def retrieval_metrics(positive_embs, head_c_embs, tail_c_embs, filter_head, filt
 
 
 def rank(positive_embs, negative_embs, filter_idx):
-    filter_idx = filter_idx.transpose(0,1)  # TODO modify data handling to make this unnecessary
     scores = score(*positive_embs)
     counterscores = score(*negative_embs)
     return ((scores > counterscores) * filter_idx).sum(dim=0) + 1  # TODO is the +1 needed to meet to def of rank?
 
 
 def mean_rank(positive_embs, head_c_embs, tail_c_embs, filter_head, filter_tail):
+    batch_size = (positive_embs[0].shape)[1]
     return torch.sum(rank(positive_embs, head_c_embs, filter_head) + rank(positive_embs, tail_c_embs, filter_tail)) / (
-                2 * len(positive_embs[0]))
+                2 * batch_size)
 
 
 def mean_rec_rank(positive_embs, head_c_embs, tail_c_embs, filter_head, filter_tail):
+    batch_size = (positive_embs[0].shape)[1]
     return torch.sum(
         1 / rank(positive_embs, head_c_embs, filter_head) + 1 / rank(positive_embs, tail_c_embs, filter_tail)) / (
-                       2 * len(positive_embs[0]))
+                       2 * batch_size)
 
 
 def hits_at_k(positive_embs, head_c_embs, tail_c_embs, filter_head, filter_tail, k):
+    batch_size = (positive_embs[0].shape)[1]
     return (torch.sum(rank(positive_embs, head_c_embs, filter_head) <= k) + torch.sum(
-        rank(positive_embs, tail_c_embs, filter_tail) <= k)) / (2 * len(positive_embs[0]))
+        rank(positive_embs, tail_c_embs, filter_tail) <= k)) / (2 * batch_size)
