@@ -112,17 +112,38 @@ class BoxTEmp():
                torch.stack((r_head_boxes, r_tail_boxes), dim=2),\
                torch.stack((time_head_boxes, time_tail_boxes), dim=2)
 
+    '''
+    @:return tuple (entities, relations, times) containing embeddings with
+        entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
+        relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+        times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+    '''
     def forward_negatives(self, negatives):
         return self.compute_embeddings(negatives)
 
+    '''
+    @:param positives tensor containing id's for entities, relations and times of shape (1, 4, batch_size)
+        and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
+    @:param negatives tensor containing id's for entities, relations and times of shape (nb_negative_samples, 4, batch_size)
+        and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
+    @:return tuple ((p_entities, p_relations, p_times), (n_entities, n_relations, n_times)) with
+        p_entities.shape = (1, batch_size, arity, embedding_dim)
+        p_relations.shape = (1, batch_size, arity, 2, embedding_dim)
+        p_times.shape = (1, batch_size, arity, 2, embedding_dim)
+        n_entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
+        n_relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+        n_times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+    '''
     def forward(self, positives, negatives):
         positive_emb = self.compute_embeddings(positives)
         negative_emb = self.forward_negatives(negatives)
         return positive_emb, negative_emb
 
-
+'''
+Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
+'''
 class BoxELoss():
-    def __init__(self, options, new=False):
+    def __init__(self, options):
         if options.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': options.margin, 'w': 1 / options.loss_k, 'ignore_time': options.ignore_time}
@@ -192,21 +213,15 @@ def binary_score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbo
     return torch.logical_and(a, torch.logical_and(b, torch.logical_and(c, d)))
 
 
+'''
+Calculates uniform negative sampling loss as presented in RotatE, Sun et. al.
+@:param positives tuple (entities, relations, times), for details see return of model.forward
+@:param negatives tuple (entities, relations, times), for details see return of model.forward_negatives
+@:param gamma loss margin
+@:param w hyperparameter, corresponds to 1/k in RotatE paper
+@:param ignore_time if True, then time information is ignored and standard BoxE is executed
+'''
 def uniform_loss(positives, negatives, gamma, w, ignore_time=False):
-    # An example of the following description can be found in our google doc (https://docs.google.com/document/d/1XltuO8IeyYSb8gLNA0lO8nLOQSqhe-Ub5gOnIc0-89w/edit?usp=sharing)
-    # If there is a more natural way to represent this data, please let me know :)
-    # positive triple: tuple of form (head_boxes, tail_boxes, head_entities, tail_entities)
-    #     head_boxes: tensor of shape (batch_size, 2, embdding_dims), to represent lower and upper boundries
-    #     tail_boxes: same as head_boxes
-    #     head_entities: tensor of shape (batch_size, embedding_dims), so one tensor for each head entity
-    #     tail_entities: same as head_entities
-    # negative_triples: tuple of form (n_head_boxes, n_tail_boxes, n_head_entities, n_tail_entities)
-    #     n_head_boxes: tensor of shape (nb_samples, batch_size, 2, embdding_dims), so each positive triple has nb_samples negative samples associated with it
-    #     n_tail_boxes: same as head_boxes
-    #     n_head_entities: tensor of shape (nb_samples, batch_size, embedding_dims)
-    #     n_tail_entities: same as head_entities
-    # w == 1/k (see RotatE-paper)
-    # headbox, tailbox, e_head, e_tail = positive_triple
     s1 = - torch.log(torch.sigmoid(gamma - score(*positives, ignore_time=ignore_time)))
     s2 = torch.sum(w * torch.log(torch.sigmoid(score(*negatives, ignore_time=ignore_time) - gamma)), dim=0)
     return torch.mean(s1 - s2)
@@ -217,7 +232,14 @@ def triple_probs(negative_triples, alpha):
     div = scores.sum()
     return scores / div
 
-
+'''
+Calculates self-adversarial negative sampling loss as presented in RotatE, Sun et. al.
+@:param positive_triple tuple (entities, relations, times), for details see return of model.forward
+@:param negative_triple tuple (entities, relations, times), for details see return of model.forward_negatives
+@:param gamma loss margin
+@:param alpha hyperparameter, see RotatE paper
+@:param ignore_time if True, then time information is ignored and standard BoxE is executed
+'''
 def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
     triple_weights = triple_probs(negative_triples, alpha)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights, ignore_time=ignore_time)
