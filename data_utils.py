@@ -175,37 +175,27 @@ class Temp_kg_loader():  # wrapper for dataloader
                 no_replacement_performed = False
                 new_e = torch.randint(max_e_id, (1,))
                 is_head = torch.randint(2, (1,)) == 1
-                if head.item():
+                if is_head.item():
                     tuples[0, i] = new_e.item()
                 else:
                     tuples[2, i] = new_e.item()
         return tuples, no_replacement_performed
 
-    '''
-    @param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
-    '''
-
     def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
-        batch_size = len(tuples[0])
-        # tuples_rep = torch.repeat_interleave(torch.stack(tuples), nb_samples, dim=1)
-        tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=1)
-        # we assume entity ids to start at 0
-        max_e_id = len(self.entity_ids)
-        # sample random entities
-        sample_ids = torch.randint(max_e_id, size=(batch_size * nb_samples,)).to(self.device)
-        is_head = (torch.randint(2, size=(
-        batch_size * nb_samples,)) == 1)  # indicate if head is being replaced (otherwise, replace tail)
-        # create sampled triples from sampled entities
-        replace_mask = torch.stack((is_head, torch.zeros(len(is_head)), ~is_head, torch.zeros(len(is_head)))).to(self.device)
-        inverse_replace_mask = torch.stack((~is_head, torch.ones(len(is_head)), is_head, torch.ones(len(is_head)))).to(
-            self.device)
-        replacements = torch.stack((sample_ids, tuples_rep[1], sample_ids, tuples_rep[3])).to(self.device)
+        _, _, batch_size = tuples.shape
+        tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=0)
+        max_e_id = len(self.entity_ids)  # we assume entity ids to start at 0
+        sample_ids = torch.randint(max_e_id, size=(nb_samples, 1, batch_size)).to(self.device)  # sample random entities
+        replacements = torch.cat((sample_ids, tuples_rep[:,1,:].unsqueeze(1), sample_ids, tuples_rep[:,3,:].unsqueeze(1)), dim=1).to(self.device)
+        is_head = (torch.randint(2, size=(nb_samples, batch_size)) == 1).unsqueeze(1)  # indicate if head is being replaced (otherwise, replace tail)
+        replace_mask = torch.cat((is_head, torch.zeros(nb_samples, 1, batch_size), ~is_head, torch.zeros(nb_samples, 1, batch_size)), dim=1).to(self.device)
+        inverse_replace_mask = torch.cat((~is_head, torch.ones(nb_samples, 1, batch_size), is_head, torch.ones(nb_samples, 1, batch_size)), dim=1).to(self.device)
         sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
         # filter out and replace known positive triples
         filtering_done = False
         while not filtering_done:
-            sampled_triples, filtering_done = self.resample(sampled_tuples, sampling_mode)
-        return sampled_tuples.reshape((4, batch_size, nb_samples)).long().transpose(0,1).transpose(0,2)
+            sampled_tuples, filtering_done = self.resample(sampled_tuples, sampling_mode)
+        return sampled_tuples.long()
 
     def compute_filter_idx(self, tuples):
         idx = torch.ones_like(tuples[0])

@@ -127,7 +127,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, option
         for i_batch, data in enumerate(trainloader):
             data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
-            negatives = kg.sample_negatives(data.squeeze(), options.num_negative_samples, options.neg_sampling_type)
+            negatives = kg.sample_negatives(data, options.num_negative_samples, options.neg_sampling_type)
             positive_emb, negative_emb = model(data, negatives)
             loss = loss_fn(positive_emb, negative_emb)
             epoch_losses.append(loss.item())
