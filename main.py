@@ -146,6 +146,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, option
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
+    print('final validation')
     metrics = test(kg, valloader, model, loss_fn, optimizer, options, device=device)
     print('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
