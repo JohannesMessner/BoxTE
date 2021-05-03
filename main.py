@@ -5,6 +5,7 @@ import sys
 import os
 import argparse
 import pprint
+import time
 from datetime import datetime
 from metrics import mean_rank
 from metrics import mean_rec_rank
@@ -273,4 +274,7 @@ def run_loop(saved_params_dir=None):
 
 if __name__ == '__main__':
     print('Execution started')
+    start_time = time.time()
     run_loop()
+    end_time = time.time()
+    print("--- %s seconds ---" % (time.time() - start_time))

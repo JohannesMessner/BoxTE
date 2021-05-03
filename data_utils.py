@@ -170,15 +170,16 @@ class Temp_kg_loader():  # wrapper for dataloader
     def resample(self, tuples, sampling_mode):
         max_e_id = len(self.entity_ids)
         no_replacement_performed = True
-        for i, head in enumerate(tuples[0]):
-            if self.needs_resample([head, tuples[1, i], tuples[2, i], tuples[3, i]], sampling_mode):
-                no_replacement_performed = False
-                new_e = torch.randint(max_e_id, (1,))
-                is_head = torch.randint(2, (1,)) == 1
-                if is_head.item():
-                    tuples[0, i] = new_e.item()
-                else:
-                    tuples[2, i] = new_e.item()
+        for i_sample, sample in enumerate(tuples):
+            for i_batch, batch in enumerate(sample.transpose(0,1)):
+                if self.needs_resample(tuples[i_sample, :, i_batch], sampling_mode):
+                    no_replacement_performed = False
+                    new_e = torch.randint(max_e_id, (1,))
+                    is_head = torch.randint(2, (1,)) == 1
+                    if is_head.item():
+                        tuples[i_sample, 0, i_batch] = new_e.item()
+                    else:
+                        tuples[i_sample, 2, i_batch] = new_e.item()
         return tuples, no_replacement_performed
 
     def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
