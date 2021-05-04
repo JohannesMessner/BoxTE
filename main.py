@@ -14,6 +14,7 @@ from metrics import retrieval_metrics
 from metrics import precision
 from metrics import recall
 from model import BoxTEmp
+from model import BoxTEmpExtrapolate
 from model import BoxELoss
 from model import BoxEBinScore
 from data_utils import Temp_kg_loader
@@ -72,47 +73,55 @@ def parse_args(args):
                         help="Number of epochs in between printing of current training loss.")
     parser.add_argument('--neg_sampling_type', default='a', type=str,
                         help="Toggle between time agnostic ('a') and time dependent ('d') negative sampling.")
-    parser.add_argument('--ignore_time', dest='ignore_time', action='store_true')
+    parser.add_argument('--nn_depth', default=3, type=int,
+                        help="Number of hidden layers in the time-approximating MLP. Only relevant if '--extrapolate' is set.")
+    parser.add_argument('--nn_width', default=3, type=int,
+                        help="Width of the time-approximating MLP. Only relevant if '--extrapolate' is set.")
+    parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
+                        help='Ignores time information present in the data and performs standard BoxE.')
+    parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
+                        help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.set_defaults(ignore_time=False)
+    parser.set_defaults(extrapolate=False)
     return parser.parse_args(args)
 
 
-def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, options,
+def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, args,
                       combined_loader=None, device='cpu'):
     print('training started')
     loss_progress = []
     validation_progress = []
-    for i_epoch in range(options.num_epochs):
+    for i_epoch in range(args.num_epochs):
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
             data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
-            negatives = kg.sample_negatives(data, options.num_negative_samples, options.neg_sampling_type)
+            negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
             positive_emb, negative_emb = model(data, negatives)
             loss = loss_fn(positive_emb, negative_emb)
             epoch_losses.append(loss.item())
             loss.backward()
             optimizer.step()
         loss_progress.append(np.mean(epoch_losses))
-        if options.print_loss_step > 0 and i_epoch % options.print_loss_step == 0:
+        if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
             print('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
             print('first epoch done')
-        if i_epoch % options.validation_step == 0:  # validation step
+        if i_epoch % args.validation_step == 0:  # validation step
             print('validation checkpoint reached')
-            precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, options, device=device)
+            precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
             print('PRECISION: {}, RECALL: {}'.format(precision, recall))
             validation_progress.append((precision, recall))
             if combined_loader is not None:
                 uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer,
-                                                         options, device=device)
+                                                         args, device=device)
                 print('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
 
-    precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, options, device=device)
+    precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
     print('PRECISION: {}, RECALL: {}'.format(precision, recall))
     validation_progress.append((precision, recall))
     if combined_loader is not None:
-        uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, options, device=device)
+        uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
         print('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
     return precision, recall, validation_progress
 
@@ -215,61 +224,65 @@ def test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, optio
     return p, r
 
 
-def train_test_val(options, device='cpu', saved_params_dir=None):
-    kg = Temp_kg_loader(options.train_path, options.test_path, options.valid_path, truncate=options.truncate_datasets, device=device)
-    trainloader = kg.get_trainloader(batch_size=options.batch_size, shuffle=True)
-    valloader = kg.get_validloader(batch_size=options.batch_size, shuffle=True)
-    testloader = kg.get_testloader(batch_size=options.batch_size, shuffle=True)
-    model = BoxTEmp(options.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
+def train_test_val(args, device='cpu', saved_params_dir=None):
+    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device)
+    trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
+    valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
+    testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
+    if args.extrapolate:
+        model = BoxTEmpExtrapolate(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                                   args.weight_init, args.nn_depth, args.nn_width).to(device)
+    else:
+        model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
     if saved_params_dir is not None:
         model.load_state_dict(torch.load(saved_params_dir))
-    optimizer = torch.optim.Adam(model.params(), lr=options.learning_rate)
-    loss_fn = BoxELoss(options)
+    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
+    loss_fn = BoxELoss(args)
 
-    best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, options, device=device)
+    best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:
         model = model.load_state_dict(best_params)
-    optimizer = torch.optim.Adam(model.params(), lr=options.learning_rate)  # this isn't really needed is it?
-    metrics = test(kg, testloader, model, loss_fn, optimizer, options, device=device)
+    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)  # this isn't really needed is it?
+    metrics = test(kg, testloader, model, loss_fn, optimizer, args, device=device)
     return metrics, progress, copy.deepcopy(model.state_dict())
 
 
-def run_train_test_binary(options, device='cpu'):
-    kg = Temp_kg_loader(options.train_path, options.test_path, options.valid_path, truncate=options.truncate_datasets, device=device)
-    trainloader = kg.get_trainloader(batch_size=options.batch_size, shuffle=True)
-    testloader = kg.get_combined_loader(datasets=['test', 'valid'], batch_size=options.batch_size, shuffle=True)
-    combined_loader = kg.get_combined_loader(datasets=['test', 'valid', 'train'], batch_size=options.batch_size,
+def run_train_test_binary(args, device='cpu'):
+    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device)
+    trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
+    testloader = kg.get_combined_loader(datasets=['test', 'valid'], batch_size=args.batch_size, shuffle=True)
+    combined_loader = kg.get_combined_loader(datasets=['test', 'valid', 'train'], batch_size=args.batch_size,
                                              shuffle=True)
-    model = BoxTEmp(options.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
-    optimizer = torch.optim.Adam(model.params(), lr=options.learning_rate)
-    loss_fn = BoxELoss(options)
-    binscore_fn = BoxEBinScore(options)
-    return train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, options,
+    model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
+    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
+    loss_fn = BoxELoss(args)
+    binscore_fn = BoxEBinScore(args)
+    return train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, args,
                              combined_loader=combined_loader)
 
 
-def save_data(options, metrics, model_params, progress):
+def save_data(args, metrics, model_params, progress):
     date_time_now = datetime.now()
     timestamp = '' + str(date_time_now.year) + str(date_time_now.month) + str(date_time_now.day) + str(date_time_now.hour) \
                 + str(date_time_now.minute) + str(date_time_now.second)
-    if not os.path.exists(options.results_dir):
-        os.makedirs(options.results_dir)
-    torch.save(progress, options.results_dir + timestamp + '-' + options.progress_filename + '.pt')
-    torch.save(model_params, options.results_dir + timestamp + '-' + options.params_filename + '.pt')
-    with open(options.results_dir + timestamp + '-' + options.results_filename + '.txt', 'w') as f:
+    if not os.path.exists(args.results_dir):
+        os.makedirs(args.results_dir)
+    torch.save(progress, args.results_dir + timestamp + '-' + args.progress_filename + '.pt')
+    torch.save(model_params, args.results_dir + timestamp + '-' + args.params_filename + '.pt')
+    with open(args.results_dir + timestamp + '-' + args.results_filename + '.txt', 'w') as f:
         print(metrics, file=f)
-    with open(options.results_dir + timestamp + '-' + options.info_filename + '.txt', 'w') as f:
-        pprint.pprint(vars(options), stream=f)
+    with open(args.results_dir + timestamp + '-' + args.info_filename + '.txt', 'w') as f:
+        pprint.pprint(vars(args), stream=f)
 
 
 def run_loop(saved_params_dir=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Running on {}'.format(device))
-    options = parse_args(None)
-    metrics, progress, model_params = train_test_val(options, device=device, saved_params_dir=saved_params_dir)
+    args = parse_args(None)
+    metrics, progress, model_params = train_test_val(args, device=device, saved_params_dir=saved_params_dir)
     print('FINAL TEST METRICS')
     print(metrics)
-    save_data(options, metrics, model_params, progress)
+    save_data(args, metrics, model_params, progress)
 
 
 if __name__ == '__main__':
