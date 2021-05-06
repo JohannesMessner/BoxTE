@@ -13,6 +13,7 @@ from metrics import hits_at_k
 from metrics import retrieval_metrics
 from metrics import precision
 from metrics import recall
+from metrics import rank
 from model import BoxTEmp
 from model import BoxTEmpExtrapolate
 from model import BoxELoss
@@ -150,14 +151,14 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, option
             print('first epoch done')
         if i_epoch % options.validation_step == 0:  # validation step
             print('validation checkpoint reached')
-            metrics = test(kg, valloader, model, loss_fn, optimizer, options, device=device)
+            metrics = test(kg, valloader, model, device=device)
             print('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
     print('final validation')
-    metrics = test(kg, valloader, model, loss_fn, optimizer, options, device=device)
+    metrics = test(kg, valloader, model, device=device)
     print('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
     if metrics['mrr'] > best_mrr:
@@ -166,40 +167,47 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, option
     return best_params, best_mrr, {'loss': loss_progress, 'metrics': validation_progress}
 
 
-def test(kg, dataloader, model, loss_fn, optimizer, options, device='cpu'):
+def test(kg, dataloader, model, device='cpu', corrupt_triples_batch_size=1024):
     with torch.no_grad():
         batch_sizes = []
         mr = []
         mrr = []
         h_at_1 = []
         h_at_3 = []
-        # h_at_5 = []
+        h_at_5 = []
         h_at_10 = []
         for i_batch, batch in enumerate(dataloader):
             batch = torch.stack(batch).to(device).unsqueeze(0)
-            head_corrupts, head_f = kg.corrupt_head(batch.squeeze())
-            tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze())
-            embeddings, head_c_embeddings = model.forward(batch, head_corrupts)
-            tail_c_embeddings = model.forward_negatives(tail_corrupts)
-            batch_sizes.append(len(batch[0]))
-            mr.append(mean_rank(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f))
-            mrr.append(mean_rec_rank(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f))
-            h_at_1.append(hits_at_k(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f, k=1))
-            h_at_3.append(hits_at_k(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f, k=3))
-            # h_at_5.append(hits_at_k(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f, k=5))
-            h_at_10.append(hits_at_k(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f, k=10))
+            head_corrupts, head_f = kg.corrupt_head(batch.squeeze(), corrupt_triples_batch_size)
+            tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze(), corrupt_triples_batch_size)
+            embeddings = model.forward_positves(batch)
+            ranks_head, ranks_tail = 0, 0
+            for i, c_batch_head in enumerate(head_corrupts):
+                c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
+                head_c_embs = model.forward_negatives(c_batch_head)
+                tail_c_embs = model.forward_negatives(c_batch_tail)
+                ranks_head += rank(embeddings, head_c_embs, head_f_batch)
+                ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch)
+            batch_sizes.append(batch.shape[2])
+            mr.append(mean_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
+            mrr.append(mean_rec_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
+            h_at_1.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=1))
+            h_at_3.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=3))
+            h_at_5.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=5))
+            h_at_10.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=10))
         batch_sizes = torch.tensor(batch_sizes)
         data_size = torch.sum(batch_sizes)
         mr = (torch.tensor(mr) * batch_sizes).sum() / data_size
         mrr = (torch.tensor(mrr) * batch_sizes).sum() / data_size
         h_at_1 = (torch.tensor(h_at_1) * batch_sizes).sum() / data_size
         h_at_3 = (torch.tensor(h_at_3) * batch_sizes).sum() / data_size
-        # h_at_5 = (torch.tensor(h_at_5) * batch_sizes).sum() / data_size
+        h_at_5 = (torch.tensor(h_at_5) * batch_sizes).sum() / data_size
         h_at_10 = (torch.tensor(h_at_10) * batch_sizes).sum() / data_size
     return {'mr': mr.item(),
             'mrr': mrr.item(),
             'h@1': h_at_1.item(),
             'h@3': h_at_3.item(),
+            'h@5': h_at_5.item(),
             'h@10': h_at_10.item()}
 
 
@@ -242,8 +250,7 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:
         model = model.load_state_dict(best_params)
-    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)  # this isn't really needed is it?
-    metrics = test(kg, testloader, model, loss_fn, optimizer, args, device=device)
+    metrics = test(kg, testloader, model, device=device)
     return metrics, progress, copy.deepcopy(model.state_dict())
 
 

@@ -127,6 +127,9 @@ class BoxTEmp():
     def forward_negatives(self, negatives):
         return self.compute_embeddings(negatives)
 
+    def forward_positves(self, positives):
+        return self.compute_embeddings(positives)
+
     '''
     @:param positives tensor containing id's for entities, relations and times of shape (1, 4, batch_size)
         and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
@@ -141,7 +144,7 @@ class BoxTEmp():
         n_times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
     '''
     def forward(self, positives, negatives):
-        positive_emb = self.compute_embeddings(positives)
+        positive_emb = self.forward_positves(positives)
         negative_emb = self.forward_negatives(negatives)
         return positive_emb, negative_emb
 

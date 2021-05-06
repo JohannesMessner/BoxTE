@@ -211,10 +211,9 @@ class Temp_kg_loader():  # wrapper for dataloader
 
     '''
     Replaces head by all other entities and filters out known positives
-    @return tensor of shape (3, batch_size, nb_entities) where filtered out triples contain -1
     '''
 
-    def corrupt_head(self, tuples):
+    def corrupt_head(self, tuples, batch_size=-1):
         batch_size = len(tuples[0])
         # we assume entity ids to start at 0
         max_e_id = len(self.entity_ids)
@@ -230,14 +229,16 @@ class Temp_kg_loader():  # wrapper for dataloader
         sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
         filter_idx = self.compute_filter_idx(
             sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        return sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
+        sampled_tuples, filter_idx = sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
+        if batch_size > 0:
+            return torch.split(sampled_tuples, batch_size), torch.split(filter_idx, batch_size)
+        return sampled_tuples, filter_idx
 
     '''
-    Replaces head by all other entities and filters out known positives
-    @return tensor of shape (3, batch_size, nb_entities) where filtered out triples contain -1
+    Replaces head by all other entities and filters out known positives 
     '''
 
-    def corrupt_tail(self, tuples):
+    def corrupt_tail(self, tuples, batch_size=-1):
         batch_size = len(tuples[0])
         # we assume entity ids to start at 0
         max_e_id = len(self.entity_ids)
@@ -253,7 +254,10 @@ class Temp_kg_loader():  # wrapper for dataloader
         sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
         filter_idx = self.compute_filter_idx(
             sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        return sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
+        sampled_tuples, filter_idx = sampled_tuples.transpose(0, 1).transpose(0, 2), filter_idx.transpose(0, 1)
+        if batch_size > 0:
+            return torch.split(sampled_tuples, batch_size), torch.split(filter_idx, batch_size)
+        return sampled_tuples, filter_idx
 
     def to(self, device):
         self.device = device
