@@ -256,10 +256,10 @@ class BoxTEmpMLP():
         return d
 
     def unroll_time(self):
-        initial_times = torch.arange(0, self.lookback)
+        initial_times = torch.arange(0, self.lookback, device=self.device)
         init_head_boxes = self.initial_time_head_boxes(initial_times)
         init_tail_boxes = self.initial_time_tail_boxes(initial_times)
-        current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten()
+        current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
         time_head_boxes, time_tail_boxes = [], []
         for t in range(self.max_time):
             next_time = self.time_transition(current_state)
