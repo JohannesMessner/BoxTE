@@ -232,7 +232,7 @@ class Temp_kg_loader():  # wrapper for dataloader
         sampled_tuples, filter_idx = sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
         if return_batch_size > 0:
             return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
-        return sampled_tuples, filter_idx
+        return (sampled_tuples,), (filter_idx,)
 
     '''
     Replaces head by all other entities and filters out known positives 
@@ -257,7 +257,7 @@ class Temp_kg_loader():  # wrapper for dataloader
         sampled_tuples, filter_idx = sampled_tuples.transpose(0, 1).transpose(0, 2), filter_idx.transpose(0, 1)
         if return_batch_size > 0:
             return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
-        return sampled_tuples, filter_idx
+        return (sampled_tuples,),  (filter_idx,)
 
     def to(self, device):
         self.device = device

@@ -80,6 +80,8 @@ def parse_args(args):
                         help="Width of the time-approximating MLP. Only relevant if '--extrapolate' is set.")
     parser.add_argument('--lookback', default=1, type=int,
                         help="Number of past time steps considered to predict next time. Only relevant if '--extrapolate' is set.")
+    parser.add_argument('--metrics_batch_size', default=-1, type=int,
+                        help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
@@ -129,38 +131,38 @@ def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, 
     return precision, recall, validation_progress
 
 
-def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, options, device='cpu'):
+def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device='cpu'):
     print('training started')
     best_mrr = -1
     best_params = None
     loss_progress = []
     validation_progress = []
-    for i_epoch in range(options.num_epochs):
+    for i_epoch in range(args.num_epochs):
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
             data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
-            negatives = kg.sample_negatives(data, options.num_negative_samples, options.neg_sampling_type)
+            negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
             positive_emb, negative_emb = model(data, negatives)
             loss = loss_fn(positive_emb, negative_emb)
             epoch_losses.append(loss.item())
             loss.backward()
             optimizer.step()
         loss_progress.append(np.mean(epoch_losses))
-        if options.print_loss_step > 0 and i_epoch % options.print_loss_step == 0:
+        if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
             print('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
             print('first epoch done')
-        if i_epoch % options.validation_step == 0:  # validation step
+        if i_epoch % args.validation_step == 0:  # validation step
             print('validation checkpoint reached')
-            metrics = test(kg, valloader, model, device=device)
+            metrics = test(kg, valloader, model, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
             print('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
     print('final validation')
-    metrics = test(kg, valloader, model, device=device)
+    metrics = test(kg, valloader, model, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     print('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
     if metrics['mrr'] > best_mrr:
@@ -252,7 +254,7 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:
         model = model.load_state_dict(best_params)
-    metrics = test(kg, testloader, model, device=device)
+    metrics = test(kg, testloader, model, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     return metrics, progress, copy.deepcopy(model.state_dict())
 
 
