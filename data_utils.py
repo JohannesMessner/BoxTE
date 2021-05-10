@@ -213,7 +213,7 @@ class Temp_kg_loader():  # wrapper for dataloader
     Replaces head by all other entities and filters out known positives
     '''
 
-    def corrupt_head(self, tuples, batch_size=-1):
+    def corrupt_head(self, tuples, return_batch_size=-1):
         batch_size = len(tuples[0])
         # we assume entity ids to start at 0
         max_e_id = len(self.entity_ids)
@@ -230,15 +230,15 @@ class Temp_kg_loader():  # wrapper for dataloader
         filter_idx = self.compute_filter_idx(
             sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
         sampled_tuples, filter_idx = sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
-        if batch_size > 0:
-            return torch.split(sampled_tuples, batch_size), torch.split(filter_idx, batch_size)
+        if return_batch_size > 0:
+            return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
         return sampled_tuples, filter_idx
 
     '''
     Replaces head by all other entities and filters out known positives 
     '''
 
-    def corrupt_tail(self, tuples, batch_size=-1):
+    def corrupt_tail(self, tuples, return_batch_size=-1):
         batch_size = len(tuples[0])
         # we assume entity ids to start at 0
         max_e_id = len(self.entity_ids)
@@ -255,8 +255,8 @@ class Temp_kg_loader():  # wrapper for dataloader
         filter_idx = self.compute_filter_idx(
             sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
         sampled_tuples, filter_idx = sampled_tuples.transpose(0, 1).transpose(0, 2), filter_idx.transpose(0, 1)
-        if batch_size > 0:
-            return torch.split(sampled_tuples, batch_size), torch.split(filter_idx, batch_size)
+        if return_batch_size > 0:
+            return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
         return sampled_tuples, filter_idx
 
     def to(self, device):

@@ -183,13 +183,13 @@ def test(kg, dataloader, model, device='cpu', corrupt_triples_batch_size=1024):
             head_corrupts, head_f = kg.corrupt_head(batch.squeeze(), corrupt_triples_batch_size)
             tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze(), corrupt_triples_batch_size)
             embeddings = model.forward_positives(batch)
-            ranks_head, ranks_tail = 0, 0
+            ranks_head, ranks_tail = 1, 1
             for i, c_batch_head in enumerate(head_corrupts):
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                ranks_head += rank(embeddings, head_c_embs, head_f_batch)
-                ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch)
+                ranks_head += rank(embeddings, head_c_embs, head_f_batch) - 1
+                ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch) - 1
             batch_sizes.append(batch.shape[2])
             mr.append(mean_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
             mrr.append(mean_rec_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
