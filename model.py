@@ -212,6 +212,8 @@ class BoxTEmpMLP():
         self.entity_bases = self.entity_bases.to(device)
         self.entity_bumps = self.entity_bumps.to(device)
         self.time_transition = self.time_transition.to(device)
+        self.initial_time_head_boxes = self.initial_time_head_boxes.to(device)
+        self.initial_time_tail_boxes = self.initial_time_tail_boxes.to(device)
         return self
 
     def state_dict(self):
@@ -266,8 +268,8 @@ class BoxTEmpMLP():
             time_head_boxes.append(next_time[:2*self.embedding_dim])
             time_tail_boxes.append(next_time[2*self.embedding_dim:])
             current_state = torch.cat((current_state[4*self.embedding_dim:], next_time))  # cut off upper/lower and head/
-        return nn.Embedding.from_pretrained(torch.cat((init_head_boxes, torch.stack(time_head_boxes)))),\
-               nn.Embedding.from_pretrained(torch.cat((init_tail_boxes, torch.stack(time_tail_boxes))))
+        return nn.Embedding.from_pretrained(torch.cat((init_head_boxes, torch.stack(time_head_boxes)))).to(self.device),\
+               nn.Embedding.from_pretrained(torch.cat((init_tail_boxes, torch.stack(time_tail_boxes)))).to(self.device)
 
     def compute_embeddings(self, tuples):
         nb_examples, _, batch_size = tuples.shape
