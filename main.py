@@ -15,7 +15,7 @@ from metrics import precision
 from metrics import recall
 from metrics import rank
 from model import BoxTEmp
-from model import BoxTEmpExtrapolate
+from model import BoxTEmpMLP
 from model import BoxELoss
 from model import BoxEBinScore
 from data_utils import Temp_kg_loader
@@ -76,8 +76,10 @@ def parse_args(args):
                         help="Toggle between time agnostic ('a') and time dependent ('d') negative sampling.")
     parser.add_argument('--nn_depth', default=3, type=int,
                         help="Number of hidden layers in the time-approximating MLP. Only relevant if '--extrapolate' is set.")
-    parser.add_argument('--nn_width', default=3, type=int,
+    parser.add_argument('--nn_width', default=300, type=int,
                         help="Width of the time-approximating MLP. Only relevant if '--extrapolate' is set.")
+    parser.add_argument('--lookback', default=1, type=int,
+                        help="Number of past time steps considered to predict next time. Only relevant if '--extrapolate' is set.")
     parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
@@ -180,7 +182,7 @@ def test(kg, dataloader, model, device='cpu', corrupt_triples_batch_size=1024):
             batch = torch.stack(batch).to(device).unsqueeze(0)
             head_corrupts, head_f = kg.corrupt_head(batch.squeeze(), corrupt_triples_batch_size)
             tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze(), corrupt_triples_batch_size)
-            embeddings = model.forward_positves(batch)
+            embeddings = model.forward_positives(batch)
             ranks_head, ranks_tail = 0, 0
             for i, c_batch_head in enumerate(head_corrupts):
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
@@ -238,8 +240,8 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
     if args.extrapolate:
-        model = BoxTEmpExtrapolate(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                                   args.weight_init, args.nn_depth, args.nn_width).to(device)
+        model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback).to(device)
     else:
         model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
     if saved_params_dir is not None:
