@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import copy
 
-'''
-BoxE model extended with boxes for timestamps.
-Can do interpolation completion on TKGs.
-'''
-class BoxTEmp():
 
+class BoxTEmp():
+    """
+    BoxE model extended with boxes for timestamps.
+    Can do interpolation completion on TKGs.
+    """
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu'):
         if weight_init == 'u':
             init_f = torch.nn.init.uniform_
@@ -75,7 +75,7 @@ class BoxTEmp():
         return self
 
     def get_r_idx_by_id(self, r_ids):
-        # r_names: tensor of realtion ids
+        """@:param r_names tensor of realtion ids"""
         return r_ids - self.relation_id_offset
 
     def get_e_idx_by_id(self, e_ids):
@@ -118,13 +118,13 @@ class BoxTEmp():
                torch.stack((r_head_boxes, r_tail_boxes), dim=2),\
                torch.stack((time_head_boxes, time_tail_boxes), dim=2)
 
-    '''
-    @:return tuple (entities, relations, times) containing embeddings with
-        entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
-        relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
-        times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
-    '''
     def forward_negatives(self, negatives):
+        """
+        @:return tuple (entities, relations, times) containing embeddings with
+            entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
+            relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+            times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+        """
         return self.compute_embeddings(negatives)
 
     def forward_positives(self, positives):
@@ -149,12 +149,11 @@ class BoxTEmp():
         return positive_emb, negative_emb
 
 
-'''
-Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
-Enables extrapolation on TKGs.
-'''
 class BoxTEmpMLP():
-
+    """
+    Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
+    Enables extrapolation on TKGs.
+    """
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu'):
         if weight_init == 'u':
             init_f = torch.nn.init.uniform_
@@ -234,7 +233,7 @@ class BoxTEmpMLP():
         return self
 
     def get_r_idx_by_id(self, r_ids):
-        # r_names: tensor of realtion ids
+        """@:param r_ids: tensor of realtion ids"""
         return r_ids - self.relation_id_offset
 
     def get_e_idx_by_id(self, e_ids):
@@ -292,41 +291,41 @@ class BoxTEmpMLP():
                torch.stack((r_head_boxes, r_tail_boxes), dim=2),\
                torch.stack((time_head_boxes, time_tail_boxes), dim=2)
 
-    '''
-    @:return tuple (entities, relations, times) containing embeddings with
-        entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
-        relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
-        times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
-    '''
     def forward_negatives(self, negatives):
+        """
+        @:return tuple (entities, relations, times) containing embeddings with
+            entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
+            relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+            times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+        """
         return self.compute_embeddings(negatives)
 
     def forward_positives(self, positives):
         return self.compute_embeddings(positives)
 
-    '''
-    @:param positives tensor containing id's for entities, relations and times of shape (1, 4, batch_size)
-        and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
-    @:param negatives tensor containing id's for entities, relations and times of shape (nb_negative_samples, 4, batch_size)
-        and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
-    @:return tuple ((p_entities, p_relations, p_times), (n_entities, n_relations, n_times)) with
-        p_entities.shape = (1, batch_size, arity, embedding_dim)
-        p_relations.shape = (1, batch_size, arity, 2, embedding_dim)
-        p_times.shape = (1, batch_size, arity, 2, embedding_dim)
-        n_entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
-        n_relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
-        n_times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
-    '''
     def forward(self, positives, negatives):
+        """
+        @:param positives tensor containing id's for entities, relations and times of shape (1, 4, batch_size)
+            and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
+        @:param negatives tensor containing id's for entities, relations and times of shape (nb_negative_samples, 4, batch_size)
+            and where dim 1 indicates 0 -> head, 1 -> relation, 2 -> tail, 3 -> time
+        @:return tuple ((p_entities, p_relations, p_times), (n_entities, n_relations, n_times)) with
+            p_entities.shape = (1, batch_size, arity, embedding_dim)
+            p_relations.shape = (1, batch_size, arity, 2, embedding_dim)
+            p_times.shape = (1, batch_size, arity, 2, embedding_dim)
+            n_entities.shape = (nb_negative_samples, batch_size, arity, embedding_dim)
+            n_relations.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+            n_times.shape = (nb_negative_samples, batch_size, arity, 2, embedding_dim)
+        """
         positive_emb = self.forward_positives(positives)
         negative_emb = self.forward_negatives(negatives)
         return positive_emb, negative_emb
 
 
-'''
-Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
-'''
 class BoxELoss():
+    """
+    Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
+    """
     def __init__(self, options):
         if options.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
@@ -397,15 +396,15 @@ def binary_score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbo
     return torch.logical_and(a, torch.logical_and(b, torch.logical_and(c, d)))
 
 
-'''
-Calculates uniform negative sampling loss as presented in RotatE, Sun et. al.
-@:param positives tuple (entities, relations, times), for details see return of model.forward
-@:param negatives tuple (entities, relations, times), for details see return of model.forward_negatives
-@:param gamma loss margin
-@:param w hyperparameter, corresponds to 1/k in RotatE paper
-@:param ignore_time if True, then time information is ignored and standard BoxE is executed
-'''
 def uniform_loss(positives, negatives, gamma, w, ignore_time=False):
+    """
+    Calculates uniform negative sampling loss as presented in RotatE, Sun et. al.
+    @:param positives tuple (entities, relations, times), for details see return of model.forward
+    @:param negatives tuple (entities, relations, times), for details see return of model.forward_negatives
+    @:param gamma loss margin
+    @:param w hyperparameter, corresponds to 1/k in RotatE paper
+    @:param ignore_time if True, then time information is ignored and standard BoxE is executed
+    """
     s1 = - torch.log(torch.sigmoid(gamma - score(*positives, ignore_time=ignore_time)))
     s2 = torch.sum(w * torch.log(torch.sigmoid(score(*negatives, ignore_time=ignore_time) - gamma)), dim=0)
     return torch.mean(s1 - s2)
@@ -416,14 +415,14 @@ def triple_probs(negative_triples, alpha):
     div = scores.sum()
     return scores / div
 
-'''
-Calculates self-adversarial negative sampling loss as presented in RotatE, Sun et. al.
-@:param positive_triple tuple (entities, relations, times), for details see return of model.forward
-@:param negative_triple tuple (entities, relations, times), for details see return of model.forward_negatives
-@:param gamma loss margin
-@:param alpha hyperparameter, see RotatE paper
-@:param ignore_time if True, then time information is ignored and standard BoxE is executed
-'''
 def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
+    """
+    Calculates self-adversarial negative sampling loss as presented in RotatE, Sun et. al.
+    @:param positive_triple tuple (entities, relations, times), for details see return of model.forward
+    @:param negative_triple tuple (entities, relations, times), for details see return of model.forward_negatives
+    @:param gamma loss margin
+    @:param alpha hyperparameter, see RotatE paper
+    @:param ignore_time if True, then time information is ignored and standard BoxE is executed
+    """
     triple_weights = triple_probs(negative_triples, alpha)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights, ignore_time=ignore_time)

@@ -2,16 +2,15 @@ import torch
 import numpy as np
 
 
-class Temp_kg_loader():  # wrapper for dataloader
-    ## TODO check ids need to be consistend across train, test, val
-
-    '''
-    @param truncate positive int indicating how many training examples to consider. Negative int uses all examples.
-    @param data_format: some datasets (i.e. the temporal ones) are in a format that need special parsing.
-      That format can be specified via this string
-    '''
+class Temp_kg_loader():
+    """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
 
     def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu'):
+        """
+        @param truncate positive int indicating how many training examples to consider. Negative int uses all examples.
+        @param data_format: some datasets (i.e. the temporal ones) are in a format that need special parsing.
+          That format can be specified via this string
+        """
         self.device = device
         self.train_data_raw = self.parse_dataset(train_path, truncate, no_time_info=no_time_info)
         self.test_data_raw = self.parse_dataset(test_path, truncate, no_time_info=no_time_info)
@@ -107,11 +106,10 @@ class Temp_kg_loader():  # wrapper for dataloader
             tuples = self.dates_to_days(tuples)
         return tuples
 
-    '''
-    Transform ICEWS timestamps to days, where the earliest day in the dataset is day 0
-    '''
-
     def dates_to_days(self, data_tuples):
+        """
+        Transform ICEWS timestamps to days, where the earliest day in the dataset is day 0
+        """
         cumm_days_year_1500 = 548229  # hard coded base case avoids exceeding max recursion depth
         stamp_to_nums = lambda x: list(map(int, x.split('-')))
         is_leap = lambda x: True if (x % 4 == 0 and x % 100 != 0) or x % 400 == 0 else False  # algorithm from Wikipedia
@@ -152,22 +150,20 @@ class Temp_kg_loader():  # wrapper for dataloader
                                                                                                                 time) in
                                                                                                                self.valid_data]
 
-    '''
-    @param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
-    '''
-
     def needs_resample(self, sample, sampling_mode):
+        """
+        @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
+        """
         if sampling_mode in ['a', 'agnostic']:
             return (sample[0], sample[1], sample[2]) in self.train_fact_set_no_timestamps
         if sampling_mode in ['d', 'dependent']:
             return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
         raise ValueError("Invalid sampling mode. Use 'd' or 'a'")
 
-    '''
-    @param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
-    '''
-
     def resample(self, tuples, sampling_mode):
+        """
+        @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
+        """
         max_e_id = len(self.entity_ids)
         no_replacement_performed = True
         for i_sample, sample in enumerate(tuples):
