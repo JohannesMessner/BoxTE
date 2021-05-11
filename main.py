@@ -182,8 +182,10 @@ def test(kg, dataloader, model, device='cpu', corrupt_triples_batch_size=1024):
         h_at_10 = []
         for i_batch, batch in enumerate(dataloader):
             batch = torch.stack(batch).to(device).unsqueeze(0)
-            head_corrupts, head_f = kg.corrupt_head(batch.squeeze(), corrupt_triples_batch_size)
-            tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze(), corrupt_triples_batch_size)
+            #head_corrupts, head_f = kg.corrupt_head(batch.squeeze(), corrupt_triples_batch_size)
+            head_corrupts, head_f = kg.corrupt_tuple(batch, 'h', corrupt_triples_batch_size)
+            tail_corrupts, tail_f = kg.corrupt_tuple(batch, 't', corrupt_triples_batch_size)
+            #tail_corrupts, tail_f = kg.corrupt_tail(batch.squeeze(), corrupt_triples_batch_size)
             embeddings = model.forward_positives(batch)
             ranks_head, ranks_tail = 1, 1
             for i, c_batch_head in enumerate(head_corrupts):

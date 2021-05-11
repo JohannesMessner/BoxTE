@@ -117,7 +117,7 @@ class Temp_kg_loader():  # wrapper for dataloader
         is_leap = lambda x: True if (x % 4 == 0 and x % 100 != 0) or x % 400 == 0 else False  # algorithm from Wikipedia
         days_per_year = lambda x: 366 if is_leap(x) else 365
         days_per_month = lambda year, month: 29 if (month == 2 and is_leap(year)) else \
-        [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+            [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
         cumm_days_year = lambda year: 0 if year < 0 else cumm_days_year_1500 if year == 1500\
             else days_per_year(year) + cumm_days_year(year - 1)
         cumm_days_month = lambda year, month: 0 if month == 0 else days_per_month(year, month) + cumm_days_month(year,
@@ -199,65 +199,35 @@ class Temp_kg_loader():  # wrapper for dataloader
         return sampled_tuples.long()
 
     def compute_filter_idx(self, tuples):
-        idx = torch.ones_like(tuples[0])
-        for i, l in enumerate(tuples[0]):
-            for j, head in enumerate(tuples[0, i]):
-                if (tuples[0, i, j], tuples[1, i, j], tuples[2, i, j], tuples[3, i, j]) in self.fact_set:
-                    idx[i, j] = 0
-                    idx[i, j] = 0
-                    idx[i, j] = 0
-                    idx[i, j] = 0
+        nb_examples, _, batch_size = tuples.shape
+        idx = torch.ones((nb_examples, batch_size), dtype=torch.long)
+        tuples_t = tuples.transpose(1,2)
+        for i_example, example in enumerate(tuples_t):
+            for i_batch, batch in enumerate(example):
+                if tuple([tuples_t[i_example, i_batch, pos] for pos in range(4)]) in self.fact_set:  # check if fact is knowingly true
+                    idx[i_example, i_batch] = 0
         return idx
 
-    '''
-    Replaces head by all other entities and filters out known positives
-    '''
+    def corrupt_tuple(self, tuples, head_or_tail, return_batch_size=-1):
+        _, _, batch_size = tuples.shape
+        max_e_id = len(self.entity_ids) # we assume entity ids to start at 0
+        tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=0)
+        sample_ids = torch.arange(max_e_id, device=self.device).repeat([batch_size, 1]).t().unsqueeze(1)  #shape (max_e_id, 1, batch_size)
+        replacements = torch.cat((sample_ids, tuples_rep[:,1,:].unsqueeze(1), sample_ids, tuples_rep[:,3,:].unsqueeze(1)), dim=1).to(self.device)
+        if head_or_tail in ['head', 'h']:
+            is_head = torch.ones((max_e_id, 1, batch_size)) == 1
+        elif head_or_tail in ['tail', 't']:
+            is_head = torch.zeros((max_e_id, 1, batch_size)) == 1
+        else:
+            raise ValueError("Argument 'head_or_tail' must be 'h', 'head', 't' or 'tail'")
+        replace_mask = torch.cat((is_head, torch.zeros(max_e_id, 1, batch_size), ~is_head, torch.zeros(max_e_id, 1, batch_size)), dim=1).to(self.device)
+        inverse_replace_mask = torch.cat((~is_head, torch.ones(max_e_id, 1, batch_size), is_head, torch.ones(max_e_id, 1, batch_size)), dim=1).to(self.device)
+        sampled_tuples = (replace_mask * replacements + inverse_replace_mask * tuples_rep).long()
 
-    def corrupt_head(self, tuples, return_batch_size=-1):
-        batch_size = len(tuples[0])
-        # we assume entity ids to start at 0
-        max_e_id = len(self.entity_ids)
-        tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=1)
-        l = len(tuples_rep[0])
-        e_permutations = torch.repeat_interleave(torch.from_numpy(np.arange(max_e_id)), batch_size).to(self.device)
-
-        replace_mask = torch.stack((torch.ones(l), torch.zeros(l), torch.zeros(l), torch.zeros(l))).to(self.device)
-        inverse_replace_mask = torch.stack((torch.zeros(l), torch.ones(l), torch.ones(l), torch.ones(l))).to(self.device)
-        replacements = torch.stack((e_permutations, tuples_rep[1], e_permutations, tuples_rep[3])).to(self.device)
-        sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
-
-        sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
-        filter_idx = self.compute_filter_idx(
-            sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        sampled_tuples, filter_idx = sampled_tuples.transpose(0,1).transpose(0,2), filter_idx.transpose(0,1)
+        filter_idx = self.compute_filter_idx(sampled_tuples)
         if return_batch_size > 0:
             return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
         return (sampled_tuples,), (filter_idx,)
-
     '''
-    Replaces head by all other entities and filters out known positives 
+    Replaces head by all other entities and filters out known positives
     '''
-
-    def corrupt_tail(self, tuples, return_batch_size=-1):
-        batch_size = len(tuples[0])
-        # we assume entity ids to start at 0
-        max_e_id = len(self.entity_ids)
-        tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=1)
-        l = len(tuples_rep[0])
-        e_permutations = torch.repeat_interleave(torch.from_numpy(np.arange(max_e_id)), batch_size).to(self.device)
-
-        replace_mask = torch.stack((torch.zeros(l), torch.zeros(l), torch.ones(l), torch.ones(l))).to(self.device)
-        inverse_replace_mask = torch.stack((torch.ones(l), torch.ones(l), torch.zeros(l), torch.zeros(l))).to(self.device)
-        replacements = torch.stack((e_permutations, tuples_rep[1], e_permutations, tuples_rep[3])).to(self.device)
-        sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
-
-        sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
-        filter_idx = self.compute_filter_idx(
-            sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        sampled_tuples, filter_idx = sampled_tuples.transpose(0, 1).transpose(0, 2), filter_idx.transpose(0, 1)
-        if return_batch_size > 0:
-            return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
-        return (sampled_tuples,),  (filter_idx,)
-
-    def to(self, device):
-        self.device = device
