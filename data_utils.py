@@ -196,7 +196,7 @@ class Temp_kg_loader():
 
     def compute_filter_idx(self, tuples):
         nb_examples, _, batch_size = tuples.shape
-        idx = torch.ones((nb_examples, batch_size), dtype=torch.long)
+        idx = torch.ones((nb_examples, batch_size), dtype=torch.long, device=self.device)
         tuples_t = tuples.transpose(1,2)
         for i_example, example in enumerate(tuples_t):
             for i_batch, batch in enumerate(example):
