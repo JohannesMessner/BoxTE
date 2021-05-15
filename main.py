@@ -145,6 +145,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
             positive_emb, negative_emb = model(data, negatives)
             loss = loss_fn(positive_emb, negative_emb)
+            assert loss.isfinite(), 'Loss is {}}!'.format(loss.item())
             epoch_losses.append(loss.item())
             loss.backward()
             optimizer.step()
