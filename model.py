@@ -412,7 +412,7 @@ def uniform_loss(positives, negatives, gamma, w, ignore_time=False):
 
 def triple_probs(negative_triples, alpha):
     scores = (score(*negative_triples) * alpha).exp()
-    div = scores.sum()
+    div = scores.sum(dim=0)
     return scores / div
 
 def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):

@@ -169,6 +169,8 @@ class Temp_kg_loader():
         for i_sample, sample in enumerate(tuples):
             for i_batch, batch in enumerate(sample.transpose(0,1)):
                 if self.needs_resample(tuples[i_sample, :, i_batch], sampling_mode):
+                    # TODO instead of returning if a resample has been performed, resample here until true negative is found
+                    # that should avoid going over the entire dataset again and therefore be more efficient
                     no_replacement_performed = False
                     new_e = torch.randint(max_e_id, (1,))
                     is_head = torch.randint(2, (1,)) == 1
