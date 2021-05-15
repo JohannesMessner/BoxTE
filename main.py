@@ -155,14 +155,14 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             print('first epoch done')
         if i_epoch % args.validation_step == 0:  # validation step
             print('validation checkpoint reached')
-            metrics = test(kg, valloader, model, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+            metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
             print('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
     print('final validation')
-    metrics = test(kg, valloader, model, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+    metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     print('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
     if metrics['mrr'] > best_mrr:
@@ -171,7 +171,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
     return best_params, best_mrr, {'loss': loss_progress, 'metrics': validation_progress}
 
 
-def test(kg, dataloader, model, device='cpu', corrupt_triples_batch_size=1024):
+def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1024):
     with torch.no_grad():
         batch_sizes = []
         mr = []
@@ -190,8 +190,8 @@ def test(kg, dataloader, model, device='cpu', corrupt_triples_batch_size=1024):
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                ranks_head += rank(embeddings, head_c_embs, head_f_batch) - 1
-                ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch) - 1
+                ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
+                ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
             batch_sizes.append(batch.shape[2])
             mr.append(mean_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
             mrr.append(mean_rec_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
@@ -254,7 +254,7 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:
         model = model.load_state_dict(best_params)
-    metrics = test(kg, testloader, model, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+    metrics = test(kg, testloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     return metrics, progress, copy.deepcopy(model.state_dict())
 
 
