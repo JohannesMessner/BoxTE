@@ -71,8 +71,8 @@ def parse_args(args):
                         help="Number of negative samples per positive (true) triple.")
     parser.add_argument('--weight_init', default='u', type=str,
                         help="Type of weight initialization for the model.")
-    parser.add_argument('--weight_init_args', default=[0, 1], nargs=2, type=float,
-                        help="Type of weight initialization for the model.")
+    parser.add_argument('--weight_init_args', default=[0, 0.5], nargs=2, type=float,
+                        help="Parameters to be passed to weight initialization.")
     parser.add_argument('--print_loss_step', default=-1, type=int,
                         help="Number of epochs in between printing of current training loss.")
     parser.add_argument('--neg_sampling_type', default='a', type=str,
