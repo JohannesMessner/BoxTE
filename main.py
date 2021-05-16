@@ -61,6 +61,8 @@ def parse_args(args):
                         help='Do not normalize the image embeddings.')
     parser.add_argument('--truncate_datasets', default=-1, type=int,
                         help='Truncate datasets to a subset of entries.')
+    parser.add_argument('--entity_subset', default=-1, type=int,
+                        help='Truncate datasets to a number of entities. Train/test/val split will be maintained.')
     parser.add_argument('--adversarial_temp', default=1, type=float,
                         help='Alpha parameter for adversarial negative sampling loss.')
     parser.add_argument('--loss_k', default=1, type=float,
@@ -243,7 +245,7 @@ def test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, optio
 
 
 def train_test_val(args, device='cpu', saved_params_dir=None):
-    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device)
+    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device, entity_subset=args.entity_subset)
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)

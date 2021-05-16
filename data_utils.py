@@ -5,7 +5,7 @@ import numpy as np
 class Temp_kg_loader():
     """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
 
-    def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu'):
+    def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu', entity_subset=-1):
         """
         @param truncate positive int indicating how many training examples to consider. Negative int uses all examples.
         @param data_format: some datasets (i.e. the temporal ones) are in a format that need special parsing.
@@ -15,6 +15,8 @@ class Temp_kg_loader():
         self.train_data_raw = self.parse_dataset(train_path, truncate, no_time_info=no_time_info)
         self.test_data_raw = self.parse_dataset(test_path, truncate, no_time_info=no_time_info)
         self.valid_data_raw = self.parse_dataset(valid_path, truncate, no_time_info=no_time_info)
+        if entity_subset > 0:
+            self.subset_data_by_entities(entity_subset)
         self.entity_ids, self.relation_ids, self.id_to_name, self.name_to_id = self.compute_ids()
         self.train_data = self.dates_to_days(
             [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
@@ -32,6 +34,25 @@ class Temp_kg_loader():
         self.train_fact_set = set(self.train_data)
         self.train_fact_set_no_timestamps = set(self.train_data_no_timestamps)
         self.fact_set = set(self.test_data + self.valid_data)
+
+    def subset_data_by_entities(self, nb_entities):
+        accepted_es = []
+        for i, (h, r, t, time) in enumerate(self.train_data_raw):
+            if len(accepted_es) >= nb_entities:
+                break
+            if h not in accepted_es:
+                accepted_es.append(h)
+            if len(accepted_es) >= nb_entities:
+                break
+            if t not in accepted_es:
+                accepted_es.append(t)
+        total_data = self.train_data_raw + self.test_data_raw + self.valid_data_raw
+        l_total_data = len(total_data)
+        train_prop, test_prop, valid_prop = len(self.train_data_raw)/l_total_data, len(self.test_data_raw)/l_total_data, len(self.valid_data_raw)/l_total_data
+        total_filtered_data = [(h,r,t,time) for (h,r,t,time) in total_data if (h in accepted_es and t in accepted_es)]
+        self.train_data_raw = total_filtered_data[:int(train_prop*len(total_filtered_data))]
+        self.test_data_raw = total_filtered_data[int(train_prop*len(total_filtered_data)):int((train_prop+test_prop)*len(total_filtered_data))]
+        self.valid_data_raw = total_filtered_data[int((train_prop+test_prop)*len(total_filtered_data)):]
 
     def get_testloader(self, data='ids', **kwargs):
         if data == 'ids':
