@@ -8,13 +8,11 @@ class BoxTEmp():
     BoxE model extended with boxes for timestamps.
     Can do interpolation completion on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu'):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1)):
         if weight_init == 'u':
             init_f = torch.nn.init.uniform_
-            init_args = (0, 0.5)
         elif weight_init == 'n':
             init_f = torch.nn.init.normal_
-            init_args = (0, 1)
         else:
             raise ValueError("Invalid value for argument 'weight_init'. Use 'u' for uniform or 'n' for normal weight initialization.")
         self.device = device
@@ -36,12 +34,12 @@ class BoxTEmp():
         self.r_tail_boxes = nn.Embedding(self.nb_relations, 2 * embedding_dim)
         self.entity_bases = nn.Embedding(self.nb_entities, embedding_dim)
         self.entity_bumps = nn.Embedding(self.nb_entities, embedding_dim)
-        init_f(self.time_head_boxes.weight, *init_args)
-        init_f(self.time_tail_boxes.weight, *init_args)
-        init_f(self.r_head_boxes.weight, *init_args)
-        init_f(self.r_tail_boxes.weight, *init_args)
-        init_f(self.entity_bases.weight, *init_args)
-        init_f(self.entity_bumps.weight, *init_args)
+        init_f(self.time_head_boxes.weight, *weight_init_args)
+        init_f(self.time_tail_boxes.weight, *weight_init_args)
+        init_f(self.r_head_boxes.weight, *weight_init_args)
+        init_f(self.r_tail_boxes.weight, *weight_init_args)
+        init_f(self.entity_bases.weight, *weight_init_args)
+        init_f(self.entity_bumps.weight, *weight_init_args)
 
     def __call__(self, positives, negatives):
         return self.forward(positives, negatives)
@@ -154,13 +152,11 @@ class BoxTEmpMLP():
     Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu'):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu', weight_init_args=(0, 1)):
         if weight_init == 'u':
             init_f = torch.nn.init.uniform_
-            init_args = (0, 0.5)
         elif weight_init == 'n':
             init_f = torch.nn.init.normal_
-            init_args = (0, 0.2)
         else:
             raise ValueError("Invalid value for argument 'weight_init'. Use 'u' for uniform or 'n' for normal weight initialization.")
         self.device = device
@@ -182,12 +178,12 @@ class BoxTEmpMLP():
         self.r_tail_boxes = nn.Embedding(self.nb_relations, 2 * embedding_dim)
         self.initial_time_head_boxes = nn.Embedding(self.lookback, 2 * embedding_dim)  # lower and upper boundaries, therefore 2*embedding_dim
         self.initial_time_tail_boxes = nn.Embedding(self.lookback, 2 * embedding_dim)
-        init_f(self.entity_bases.weight, *init_args)
-        init_f(self.entity_bumps.weight, *init_args)
-        init_f(self.r_head_boxes.weight, *init_args)
-        init_f(self.r_tail_boxes.weight, *init_args)
-        init_f(self.initial_time_head_boxes.weight, *init_args)
-        init_f(self.initial_time_tail_boxes.weight, *init_args)
+        init_f(self.entity_bases.weight, *weight_init_args)
+        init_f(self.entity_bumps.weight, *weight_init_args)
+        init_f(self.r_head_boxes.weight, *weight_init_args)
+        init_f(self.r_tail_boxes.weight, *weight_init_args)
+        init_f(self.initial_time_head_boxes.weight, *weight_init_args)
+        init_f(self.initial_time_tail_boxes.weight, *weight_init_args)
         mlp_layers = [nn.Linear(4*self.embedding_dim*lookback, nn_width), nn.ReLU()]  # 4* because of lower/upper and head/tail
         for i in range(nn_depth):
             mlp_layers.append(nn.Linear(nn_width, nn_width))
