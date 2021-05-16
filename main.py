@@ -300,6 +300,7 @@ def run_loop(saved_params_dir=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Running on {}'.format(device))
     args = parse_args(None)
+    print(args)
     metrics, progress, model_params = train_test_val(args, device=device, saved_params_dir=saved_params_dir)
     print('FINAL TEST METRICS')
     print(metrics)
