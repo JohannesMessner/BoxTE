@@ -249,7 +249,7 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
         model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback).to(device)
     else:
-        model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
+        model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), weight_init=args.weight_init).to(device)
     if saved_params_dir is not None:
         model.load_state_dict(torch.load(saved_params_dir))
     optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)

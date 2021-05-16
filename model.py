@@ -14,7 +14,7 @@ class BoxTEmp():
             init_args = (0, 0.5)
         elif weight_init == 'n':
             init_f = torch.nn.init.normal_
-            init_args = (0, 0.2)
+            init_args = (0, 1)
         else:
             raise ValueError("Invalid value for argument 'weight_init'. Use 'u' for uniform or 'n' for normal weight initialization.")
         self.device = device
@@ -405,8 +405,9 @@ def uniform_loss(positives, negatives, gamma, w, ignore_time=False):
     @:param w hyperparameter, corresponds to 1/k in RotatE paper
     @:param ignore_time if True, then time information is ignored and standard BoxE is executed
     """
-    s1 = - torch.log(torch.sigmoid(gamma - score(*positives, ignore_time=ignore_time)))
-    s2 = torch.sum(w * torch.log(torch.sigmoid(score(*negatives, ignore_time=ignore_time) - gamma)), dim=0)
+    eps = torch.finfo(torch.float32).tiny
+    s1 = - torch.log(torch.sigmoid(gamma - score(*positives, ignore_time=ignore_time)) + eps)
+    s2 = torch.sum(w * torch.log(torch.sigmoid(score(*negatives, ignore_time=ignore_time) - gamma) + eps), dim=0)
     return torch.mean(s1 - s2)
 
 
