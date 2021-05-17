@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import copy
-import sys
+import logging
 import os
 import argparse
 import pprint
@@ -31,6 +31,8 @@ def parse_args(args):
                         help='Path to validation dataset')
     parser.add_argument('--test_path', default='./test.txt',
                         help='Path to test dataset')
+    parser.add_argument('--log_filename', default='',
+                        help='Filename given to log file. Default prints to stderr. Timestamp added automatically.')
     parser.add_argument('--progress_filename', default='progress',
                         help='Filename given to validation progress data. File extension and timestamp are added automatically.')
     parser.add_argument('--params_filename', default='params',
@@ -39,8 +41,8 @@ def parse_args(args):
                         help='Filename given to final results/metrics. File extension and timestamp are added automatically.')
     parser.add_argument('--info_filename', default='info',
                         help='Filename given to information file. File extension and timestamp are added automatically.')
-    parser.add_argument('--results_dir', default='',
-                        help='Directory results, params and info will be saved into.')
+    parser.add_argument('--log_dir', default='',
+                        help='Directory results, params, info and log will be saved into.')
     parser.add_argument('--margin', default=0.2, type=float,
                         help='Loss margin.')
     parser.add_argument('--num_epochs', default=10, type=int,
@@ -98,7 +100,7 @@ def parse_args(args):
 
 def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, args,
                       combined_loader=None, device='cpu'):
-    print('training started')
+    logging.info('Training started')
     loss_progress = []
     validation_progress = []
     for i_epoch in range(args.num_epochs):
@@ -114,30 +116,30 @@ def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, 
             optimizer.step()
         loss_progress.append(np.mean(epoch_losses))
         if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
-            print('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
+            logging.info('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
-            print('first epoch done')
+            logging.info('first epoch done')
         if i_epoch % args.validation_step == 0:  # validation step
-            print('validation checkpoint reached')
+            logging.info('validation checkpoint reached')
             precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
-            print('PRECISION: {}, RECALL: {}'.format(precision, recall))
+            logging.info('PRECISION: {}, RECALL: {}'.format(precision, recall))
             validation_progress.append((precision, recall))
             if combined_loader is not None:
                 uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer,
                                                          args, device=device)
-                print('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
+                logging.info('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
 
     precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
-    print('PRECISION: {}, RECALL: {}'.format(precision, recall))
+    logging.info('PRECISION: {}, RECALL: {}'.format(precision, recall))
     validation_progress.append((precision, recall))
     if combined_loader is not None:
         uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
-        print('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
+        logging.info('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
     return precision, recall, validation_progress
 
 
 def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device='cpu'):
-    print('training started')
+    logging.info('training started')
     best_mrr = -1
     best_params = None
     loss_progress = []
@@ -151,27 +153,27 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             positive_emb, negative_emb = model(data, negatives)
             loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
-                warnings.warn('Loss is {}. Skipping to next mini batch.'.format(loss.item()))
+                logging.warning('Loss is {}. Skipping to next mini batch.'.format(loss.item()))
                 continue
             epoch_losses.append(loss.item())
             loss.backward()
             optimizer.step()
         loss_progress.append(np.mean(epoch_losses))
         if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
-            print('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
+            logging.info('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
-            print('first epoch done')
+            logging.info('first epoch done')
         if i_epoch % args.validation_step == 0:  # validation step
-            print('validation checkpoint reached')
+            logging.info('validation checkpoint reached')
             metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
-            print('METRICS: {}'.format(metrics))
+            logging.info('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
-    print('final validation')
+    logging.info('final validation')
     metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
-    print('METRICS: {}'.format(metrics))
+    logging.info('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
     if metrics['mrr'] > best_mrr:
         best_mrr = metrics['mrr']
@@ -234,7 +236,7 @@ def test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, optio
             embeddings, tail_c_embeddings = model.forward(batch, tail_corrupts)
             tp, tn, fp, fn = retrieval_metrics(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f,
                                                binscore_fn)
-            print('tp {} tn {} fp {} fn {}'.format(tp, tn, fp, fn))
+            logging.log('tp {} tn {} fp {} fn {}'.format(tp, tn, fp, fn))
             tps.append(tp)
             tns.append(tn)
             fps.append(fp)
@@ -282,29 +284,36 @@ def run_train_test_binary(args, device='cpu'):
                              combined_loader=combined_loader)
 
 
-def save_data(args, metrics, model_params, progress):
-    date_time_now = datetime.now()
-    timestamp = '' + str(date_time_now.year) + str(date_time_now.month) + str(date_time_now.day) + str(date_time_now.hour) \
-                + str(date_time_now.minute) + str(date_time_now.second)
-    if not os.path.exists(args.results_dir):
-        os.makedirs(args.results_dir)
-    torch.save(progress, args.results_dir + timestamp + '-' + args.progress_filename + '.pt')
-    torch.save(model_params, args.results_dir + timestamp + '-' + args.params_filename + '.pt')
-    with open(args.results_dir + timestamp + '-' + args.results_filename + '.txt', 'w') as f:
+def save_data(args, metrics, model_params, progress, timestamp):
+    if not os.path.exists(args.log_dir):
+        os.makedirs(args.log_dir)
+    torch.save(progress, args.log_dir + '/' + timestamp + '-' + args.progress_filename + '.pt')
+    torch.save(model_params, args.log_dir + timestamp + '-' + args.params_filename + '.pt')
+    with open(args.log_dir + '/' + timestamp + '-' + args.results_filename + '.txt', 'w') as f:
         print(metrics, file=f)
-    with open(args.results_dir + timestamp + '-' + args.info_filename + '.txt', 'w') as f:
+    with open(args.log_dir + '/' + timestamp + '-' + args.info_filename + '.txt', 'w') as f:
         pprint.pprint(vars(args), stream=f)
 
 
 def run_loop(saved_params_dir=None):
+    date_time_now = datetime.now()
+    timestamp = '' + str(date_time_now.year) + str(date_time_now.month) + str(date_time_now.day) + str(date_time_now.hour) \
+                + str(date_time_now.minute) + str(date_time_now.second)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Running on {}'.format(device))
     args = parse_args(None)
-    print(args)
+    if args.log_filename:
+        if not os.path.exists(args.log_dir):
+            os.makedirs(args.log_dir)
+        complete_filename = args.log_dir + '/' + timestamp + '-' + args.log_filename
+        logging.basicConfig(filename=complete_filename, level=logging.INFO)
+    else:
+        logging.basicConfig(handlers=[logging.StreamHandler()], level=logging.INFO)
+    logging.info('Running on {}'.format(device))
+    logging.info('%s', args)
     metrics, progress, model_params = train_test_val(args, device=device, saved_params_dir=saved_params_dir)
-    print('FINAL TEST METRICS')
-    print(metrics)
-    save_data(args, metrics, model_params, progress)
+    logging.info('FINAL TEST METRICS')
+    logging.info('%s', metrics)
+    save_data(args, metrics, model_params, progress, timestamp)
 
 
 if __name__ == '__main__':
