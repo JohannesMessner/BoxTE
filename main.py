@@ -25,6 +25,8 @@ from data_utils import Temp_kg_loader
 def parse_args(args):
     # Hyper-Parameters
     parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
+    parser.add_argument('--load_params_path', default='',
+                        help='Specifies path to model parameters will be loaded. Default initializes a new model.')
     parser.add_argument('--train_path', default='./train.txt',
                         help='Path to training dataset')
     parser.add_argument('--valid_path', default='./valid.txt',
@@ -256,8 +258,9 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     else:
         model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                         weight_init=args.weight_init, weight_init_args=args.weight_init_args).to(device)
-    if saved_params_dir is not None:
-        model.load_state_dict(torch.load(saved_params_dir))
+    if args.load_params_path:
+        params = torch.load(args.load_params_path, map_location=device)
+        model = model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
     loss_fn = BoxELoss(args)
 
