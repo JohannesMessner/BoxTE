@@ -93,8 +93,11 @@ def parse_args(args):
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
+    parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
+                        help='Disable validation after first epoch.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(extrapolate=False)
+    parser.set_defaults(no_initial_validation=False)
     return parser.parse_args(args)
 
 
@@ -163,7 +166,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             print('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
             print('first epoch done')
-        if i_epoch % args.validation_step == 0:  # validation step
+        if i_epoch % args.validation_step == 0 and (i_epoch != 0 or (not args.no_initial_validation)):  # validation step
             print('validation checkpoint reached')
             metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
             print('METRICS: {}'.format(metrics))
