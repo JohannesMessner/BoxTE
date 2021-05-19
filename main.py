@@ -25,6 +25,8 @@ from data_utils import Temp_kg_loader
 def parse_args(args):
     # Hyper-Parameters
     parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
+    parser.add_argument('--load_params_path', default='',
+                        help='Specifies path to model parameters will be loaded. Default initializes a new model.')
     parser.add_argument('--train_path', default='./train.txt',
                         help='Path to training dataset')
     parser.add_argument('--valid_path', default='./valid.txt',
@@ -93,8 +95,11 @@ def parse_args(args):
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
+    parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
+                        help='Disable validation after first epoch.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(extrapolate=False)
+    parser.set_defaults(no_initial_validation=False)
     return parser.parse_args(args)
 
 
@@ -163,7 +168,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             logging.info('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
             logging.info('first epoch done')
-        if i_epoch % args.validation_step == 0:  # validation step
+        if i_epoch % args.validation_step == 0 and (i_epoch != 0 or (not args.no_initial_validation)):  # validation step
             logging.info('validation checkpoint reached')
             metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
             logging.info('METRICS: {}'.format(metrics))
@@ -258,8 +263,9 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     else:
         model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                         weight_init=args.weight_init, weight_init_args=args.weight_init_args).to(device)
-    if saved_params_dir is not None:
-        model.load_state_dict(torch.load(saved_params_dir))
+    if args.load_params_path:
+        params = torch.load(args.load_params_path, map_location=device)
+        model = model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
     loss_fn = BoxELoss(args)
 
