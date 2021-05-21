@@ -322,14 +322,14 @@ class BoxELoss():
     """
     Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
     """
-    def __init__(self, options):
-        if options.loss_type in ['uniform', 'u']:
+    def __init__(self, args):
+        if args.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
-            self.fn_kwargs = {'gamma': options.margin, 'w': 1.0 / options.loss_k, 'ignore_time': options.ignore_time}
-        elif options.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
+            self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples, 'ignore_time': args.ignore_time}
+        elif args.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
             self.loss_fn = adversarial_loss_old
-            self.fn_kwargs = {'gamma': options.margin, 'alpha': options.adversarial_temp,
-                              'ignore_time': options.ignore_time}
+            self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp,
+                              'ignore_time': args.ignore_time}
 
     def __call__(self, positive_tuples, negative_tuples):
         return self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
