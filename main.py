@@ -53,8 +53,6 @@ def parse_args(args):
                         help='Size of a training batch size.')
     parser.add_argument('--embedding_dim', default=300, type=int,
                         help='Dimensionality of the embedding.')
-    parser.add_argument('--grad_clip', default=2., type=float,
-                        help='Gradient clipping threshold.')
     parser.add_argument('--learning_rate', default=.0001, type=float,
                         help='Learning rate.')
     parser.add_argument('--log_step', default=10, type=int,
@@ -69,8 +67,6 @@ def parse_args(args):
                         help='Truncate datasets to a number of entities. Train/test/val split will be maintained.')
     parser.add_argument('--adversarial_temp', default=1, type=float,
                         help='Alpha parameter for adversarial negative sampling loss.')
-    parser.add_argument('--loss_k', default=1, type=float,
-                        help='k parameter for uniform loss.')
     parser.add_argument('--loss_type', default='u', type=str,
                         help="Toggle between uniform ('u') and self-adversarial ('a') loss.")
     parser.add_argument('--num_negative_samples', default=10, type=int,

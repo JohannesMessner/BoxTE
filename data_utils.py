@@ -33,7 +33,7 @@ class Temp_kg_loader():
         self.max_time_train = max([time for [_, _, _, time] in self.train_data])
         self.train_fact_set = set(self.train_data)
         self.train_fact_set_no_timestamps = set(self.train_data_no_timestamps)
-        self.fact_set = set(self.test_data + self.valid_data)
+        self.fact_set = set(self.test_data + self.valid_data).union(self.train_fact_set)
 
     def subset_data_by_entities(self, nb_entities):
         accepted_es = []
