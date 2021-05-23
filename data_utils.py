@@ -188,7 +188,7 @@ class Temp_kg_loader():
         """
         nb_examples, _, batch_size = tuples.shape
         max_e_id = len(self.entity_ids)
-        tuples_t = tuples.transpose(1, 2).reshape((nb_examples * batch_size, 4)).numpy()
+        tuples_t = tuples.transpose(1, 2).reshape((nb_examples * batch_size, 4)).cpu().numpy()
 
         def func(row):
             t = tuple([row[i].item() for i in range(4)])
@@ -203,7 +203,7 @@ class Temp_kg_loader():
                     t = ([row[0], row[1], new_e, row[3]])
             return np.array(t)
 
-        tuples_t = torch.from_numpy(np.apply_along_axis(func, 1, tuples_t)).reshape((nb_examples, batch_size, 4)).transpose(1,2)
+        tuples_t = torch.from_numpy(np.apply_along_axis(func, 1, tuples_t)).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
         return tuples_t
 
     def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
@@ -222,10 +222,10 @@ class Temp_kg_loader():
 
     def compute_filter_idx(self, tuples):
         nb_examples, _, batch_size = tuples.shape
-        tuples_t = tuples.transpose(1,2).reshape((nb_examples*batch_size, 4)).numpy()
+        tuples_t = tuples.transpose(1,2).reshape((nb_examples*batch_size, 4)).cpu().numpy()
         func = lambda row: tuple([row[i].item() for i in range(4)]) not in self.fact_set
         idx = np.apply_along_axis(func, 1, tuples_t)
-        return torch.from_numpy(idx).reshape((nb_examples, batch_size))
+        return torch.from_numpy(idx).reshape((nb_examples, batch_size)).to(self.device)
 
     def corrupt_tuple(self, tuples, head_or_tail, return_batch_size=-1):
         _, _, batch_size = tuples.shape
