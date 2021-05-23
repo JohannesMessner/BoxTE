@@ -147,8 +147,12 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
     validation_progress = []
     epoch_times = []
     sampling_times_epoch = []
+    for_times_epoch = []
+    back_times_epoch = []
     for i_epoch in range(args.num_epochs):
         sampling_time = 0
+        for_time = 0
+        back_time = 0
         epoch_start_time = time.time()
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
@@ -158,15 +162,23 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
             sampling_end_time = time.time()
             sampling_time += (sampling_end_time-sampling_start_time)
+            for_start_time = time.time()
             positive_emb, negative_emb = model(data, negatives)
+            for_end_time = time.time()
+            for_time += (for_end_time - for_start_time)
             loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
                 logging.warning('Loss is {}. Skipping to next mini batch.'.format(loss.item()))
                 continue
             epoch_losses.append(loss.item())
+            back_start_time = time.time()
             loss.backward()
+            back_end_time = time.time()
+            back_time += (back_end_time - back_start_time)
             optimizer.step()
         sampling_times_epoch.append(sampling_time)
+        for_times_epoch.append(for_time)
+        back_times_epoch.append(back_time)
         loss_progress.append(np.mean(epoch_losses))
         epoch_end_time = time.time()
         epoch_times.append(epoch_end_time-epoch_start_time)
@@ -179,6 +191,8 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             logging.info('average epoch time: {} seconds'.format(torch.tensor(epoch_times).mean()))
             epoch_times = []
             logging.info('average sampling time per epoch: {} seconds'.format(torch.tensor(sampling_times_epoch).mean()))
+            logging.info('average forward time per epoch: {} seconds'.format(torch.tensor(for_times_epoch).mean()))
+            logging.info('average backward time per epoch: {} seconds'.format(torch.tensor(back_times_epoch).mean()))
             sampling_times_epoch = []
             metrics_start_time = time.time()
             metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
