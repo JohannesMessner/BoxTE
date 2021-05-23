@@ -1,3 +1,5 @@
+import logging
+
 import torch
 import numpy as np
 import time
@@ -203,7 +205,11 @@ class Temp_kg_loader():
                     t = ([row[0], row[1], new_e, row[3]])
             return np.array(t)
 
-        tuples_t = torch.from_numpy(np.apply_along_axis(func, 1, tuples_t)).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
+        tuples_t = np.apply_along_axis(func, 1, tuples_t)
+        if tuples_t.dtype not in ['float64', 'float32', 'float16', 'complex64', 'complex128', 'int64', 'int32', 'int16', 'int8', 'uint8', 'bool']:
+            logging.warning('Array dtype not supported. No filtering in this iteration. Dtype: {}'.format(tuples_t.dtype))
+            return tuples
+        tuples_t = torch.from_numpy(tuples_t).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
         return tuples_t
 
     def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
