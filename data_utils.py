@@ -3,6 +3,8 @@ import logging
 import torch
 import numpy as np
 import time
+import numbers
+import sys
 
 
 class Temp_kg_loader():
@@ -197,7 +199,7 @@ class Temp_kg_loader():
             if not self.needs_resample(t, sampling_mode):
                 return row
             while self.needs_resample(t, sampling_mode):
-                new_e = torch.randint(max_e_id, (1,))
+                new_e = torch.randint(max_e_id, (1,)).item()
                 is_head = torch.randint(2, (1,)) == 1
                 if is_head.item():
                     t = ([new_e, row[1], row[2], row[3]])
@@ -208,7 +210,12 @@ class Temp_kg_loader():
         tuples_t = np.apply_along_axis(func, 1, tuples_t)
         if tuples_t.dtype not in ['float64', 'float32', 'float16', 'complex64', 'complex128', 'int64', 'int32', 'int16', 'int8', 'uint8', 'bool']:
             logging.warning('Array dtype not supported. No filtering in this iteration. Dtype: {}'.format(tuples_t.dtype))
-            return tuples
+            for row in tuples_t:
+                for e in row:
+                    if not isinstance(e, numbers.Number):
+                        logging.info(str(e))
+            #logging.info(str(tuples_t))
+            sys.exit()
         tuples_t = torch.from_numpy(tuples_t).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
         return tuples_t
 
