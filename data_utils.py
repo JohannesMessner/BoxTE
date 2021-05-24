@@ -199,7 +199,7 @@ class Temp_kg_loader():
             if not self.needs_resample(t, sampling_mode):
                 return row
             while self.needs_resample(t, sampling_mode):
-                new_e = torch.randint(max_e_id, (1,))
+                new_e = torch.randint(max_e_id, (1,)).item()
                 is_head = torch.randint(2, (1,)) == 1
                 if is_head.item():
                     t = ([new_e, row[1], row[2], row[3]])
