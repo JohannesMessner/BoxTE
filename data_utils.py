@@ -213,7 +213,7 @@ class Temp_kg_loader():
             for row in tuples_t:
                 for e in row:
                     if not isinstance(e, numbers.Number):
-                        print(e)
+                        logging.info(str(e))
             #logging.info(str(tuples_t))
             sys.exit()
         tuples_t = torch.from_numpy(tuples_t).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
