@@ -327,7 +327,7 @@ class BoxELoss():
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples, 'ignore_time': args.ignore_time}
         elif args.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
-            self.loss_fn = adversarial_loss_old
+            self.loss_fn = adversarial_loss
             self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp,
                               'ignore_time': args.ignore_time}
 
@@ -412,7 +412,8 @@ def triple_probs(negative_triples, alpha, ignore_time=False):
     div = scores.sum(dim=0)
     return scores / div
 
-def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
+
+def adversarial_loss(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
     """
     Calculates self-adversarial negative sampling loss as presented in RotatE, Sun et. al.
     @:param positive_triple tuple (entities, relations, times), for details see return of model.forward
