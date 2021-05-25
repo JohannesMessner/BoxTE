@@ -1,21 +1,27 @@
+import logging
+
 import torch
 import numpy as np
+import time
+import numbers
+import sys
 
 
-class Temp_kg_loader():  # wrapper for dataloader
-    ## TODO check ids need to be consistend across train, test, val
+class Temp_kg_loader():
+    """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
 
-    '''
-    @param truncate positive int indicating how many training examples to consider. Negative int uses all examples.
-    @param data_format: some datasets (i.e. the temporal ones) are in a format that need special parsing.
-      That format can be specified via this string
-    '''
-
-    def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu'):
+    def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu', entity_subset=-1):
+        """
+        @param truncate positive int indicating how many training examples to consider. Negative int uses all examples.
+        @param data_format: some datasets (i.e. the temporal ones) are in a format that need special parsing.
+          That format can be specified via this string
+        """
         self.device = device
         self.train_data_raw = self.parse_dataset(train_path, truncate, no_time_info=no_time_info)
         self.test_data_raw = self.parse_dataset(test_path, truncate, no_time_info=no_time_info)
         self.valid_data_raw = self.parse_dataset(valid_path, truncate, no_time_info=no_time_info)
+        if entity_subset > 0:
+            self.subset_data_by_entities(entity_subset)
         self.entity_ids, self.relation_ids, self.id_to_name, self.name_to_id = self.compute_ids()
         self.train_data = self.dates_to_days(
             [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
@@ -32,7 +38,26 @@ class Temp_kg_loader():  # wrapper for dataloader
         self.max_time_train = max([time for [_, _, _, time] in self.train_data])
         self.train_fact_set = set(self.train_data)
         self.train_fact_set_no_timestamps = set(self.train_data_no_timestamps)
-        self.fact_set = set(self.test_data + self.valid_data)
+        self.fact_set = set(self.test_data + self.valid_data).union(self.train_fact_set)
+
+    def subset_data_by_entities(self, nb_entities):
+        accepted_es = []
+        for i, (h, r, t, time) in enumerate(self.train_data_raw):
+            if len(accepted_es) >= nb_entities:
+                break
+            if h not in accepted_es:
+                accepted_es.append(h)
+            if len(accepted_es) >= nb_entities:
+                break
+            if t not in accepted_es:
+                accepted_es.append(t)
+        total_data = self.train_data_raw + self.test_data_raw + self.valid_data_raw
+        l_total_data = len(total_data)
+        train_prop, test_prop, valid_prop = len(self.train_data_raw)/l_total_data, len(self.test_data_raw)/l_total_data, len(self.valid_data_raw)/l_total_data
+        total_filtered_data = [(h,r,t,time) for (h,r,t,time) in total_data if (h in accepted_es and t in accepted_es)]
+        self.train_data_raw = total_filtered_data[:int(train_prop*len(total_filtered_data))]
+        self.test_data_raw = total_filtered_data[int(train_prop*len(total_filtered_data)):int((train_prop+test_prop)*len(total_filtered_data))]
+        self.valid_data_raw = total_filtered_data[int((train_prop+test_prop)*len(total_filtered_data)):]
 
     def get_testloader(self, data='ids', **kwargs):
         if data == 'ids':
@@ -107,17 +132,16 @@ class Temp_kg_loader():  # wrapper for dataloader
             tuples = self.dates_to_days(tuples)
         return tuples
 
-    '''
-    Transform ICEWS timestamps to days, where the earliest day in the dataset is day 0
-    '''
-
     def dates_to_days(self, data_tuples):
+        """
+        Transform ICEWS timestamps to days, where the earliest day in the dataset is day 0
+        """
         cumm_days_year_1500 = 548229  # hard coded base case avoids exceeding max recursion depth
         stamp_to_nums = lambda x: list(map(int, x.split('-')))
         is_leap = lambda x: True if (x % 4 == 0 and x % 100 != 0) or x % 400 == 0 else False  # algorithm from Wikipedia
         days_per_year = lambda x: 366 if is_leap(x) else 365
         days_per_month = lambda year, month: 29 if (month == 2 and is_leap(year)) else \
-        [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
+            [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month]
         cumm_days_year = lambda year: 0 if year < 0 else cumm_days_year_1500 if year == 1500\
             else days_per_year(year) + cumm_days_year(year - 1)
         cumm_days_month = lambda year, month: 0 if month == 0 else days_per_month(year, month) + cumm_days_month(year,
@@ -152,117 +176,103 @@ class Temp_kg_loader():  # wrapper for dataloader
                                                                                                                 time) in
                                                                                                                self.valid_data]
 
-    '''
-    @param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
-    '''
+    def resample_agnostic(self, sample):
+        return (sample[0], sample[1], sample[2]) in self.train_fact_set_no_timestamps
+
+    def resample_dependent(self, sample):
+        return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
+
+    def get_resample_func(self, sampling_mode):
+        if sampling_mode in ['a', 'agnostic']:
+            return self.resample_agnostic
+        if sampling_mode in ['d', 'dependent']:
+            return self.resample_dependent
 
     def needs_resample(self, sample, sampling_mode):
+        """
+        @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
+        """
         if sampling_mode in ['a', 'agnostic']:
             return (sample[0], sample[1], sample[2]) in self.train_fact_set_no_timestamps
         if sampling_mode in ['d', 'dependent']:
             return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
         raise ValueError("Invalid sampling mode. Use 'd' or 'a'")
 
-    '''
-    @param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
-    '''
-
-    def resample(self, tuples, sampling_mode):
+    def resample_known_positives(self, tuples, sampling_mode):
+        """
+        @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
+        """
+        nb_examples, _, batch_size = tuples.shape
         max_e_id = len(self.entity_ids)
-        no_replacement_performed = True
-        for i, head in enumerate(tuples[0]):
-            if self.needs_resample([head, tuples[1, i], tuples[2, i], tuples[3, i]], sampling_mode):
-                no_replacement_performed = False
-                new_e = torch.randint(max_e_id, (1,))
-                is_head = torch.randint(2, (1,)) == 1
-                if head.item():
-                    tuples[0, i] = new_e.item()
-                else:
-                    tuples[2, i] = new_e.item()
-        return tuples, no_replacement_performed
+        tuples_t = tuples.transpose(1, 2).reshape((nb_examples * batch_size, 4)).cpu().numpy()
+        resample_func = self.get_resample_func(sampling_mode)
 
-    '''
-    @param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
-    '''
+        def func(row):
+            t = (row[0].item(), row[1].item(), row[2].item(), row[3].item())
+            if not resample_func(t):
+                return row
+            while resample_func(t):
+                new_e = torch.randint(max_e_id, (1,)).item()
+                is_head = torch.randint(2, (1,)) == 1
+                if is_head.item():
+                    t = ([new_e, row[1], row[2], row[3]])
+                else:
+                    t = ([row[0], row[1], new_e, row[3]])
+            return np.array(t)
+
+        tuples_t = np.apply_along_axis(func, 1, tuples_t)
+        if tuples_t.dtype not in ['float64', 'float32', 'float16', 'complex64', 'complex128', 'int64', 'int32', 'int16', 'int8', 'uint8', 'bool']:
+            logging.warning('Array dtype not supported. No filtering in this iteration. Dtype: {}'.format(tuples_t.dtype))
+            for row in tuples_t:
+                for e in row:
+                    if not isinstance(e, numbers.Number):
+                        logging.info(str(e))
+            #logging.info(str(tuples_t))
+            sys.exit()
+        tuples_t = torch.from_numpy(tuples_t).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
+        return tuples_t
 
     def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
-        batch_size = len(tuples[0])
-        # tuples_rep = torch.repeat_interleave(torch.stack(tuples), nb_samples, dim=1)
-        tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=1)
-        # we assume entity ids to start at 0
-        max_e_id = len(self.entity_ids)
-        # sample random entities
-        sample_ids = torch.randint(max_e_id, size=(batch_size * nb_samples,)).to(self.device)
-        is_head = (torch.randint(2, size=(
-        batch_size * nb_samples,)) == 1)  # indicate if head is being replaced (otherwise, replace tail)
-        # create sampled triples from sampled entities
-        replace_mask = torch.stack((is_head, torch.zeros(len(is_head)), ~is_head, torch.zeros(len(is_head)))).to(self.device)
-        inverse_replace_mask = torch.stack((~is_head, torch.ones(len(is_head)), is_head, torch.ones(len(is_head)))).to(
-            self.device)
-        replacements = torch.stack((sample_ids, tuples_rep[1], sample_ids, tuples_rep[3])).to(self.device)
+        _, _, batch_size = tuples.shape
+        tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=0)
+        max_e_id = len(self.entity_ids)  # we assume entity ids to start at 0
+        sample_ids = torch.randint(max_e_id, size=(nb_samples, 1, batch_size)).to(self.device)  # sample random entities
+        replacements = torch.cat((sample_ids, tuples_rep[:,1,:].unsqueeze(1), sample_ids, tuples_rep[:,3,:].unsqueeze(1)), dim=1).to(self.device)
+        is_head = (torch.randint(2, size=(nb_samples, batch_size)) == 1).unsqueeze(1)  # indicate if head is being replaced (otherwise, replace tail)
+        replace_mask = torch.cat((is_head, torch.zeros(nb_samples, 1, batch_size), ~is_head, torch.zeros(nb_samples, 1, batch_size)), dim=1).to(self.device)
+        inverse_replace_mask = torch.cat((~is_head, torch.ones(nb_samples, 1, batch_size), is_head, torch.ones(nb_samples, 1, batch_size)), dim=1).to(self.device)
         sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
         # filter out and replace known positive triples
-        filtering_done = False
-        while not filtering_done:
-            sampled_triples, filtering_done = self.resample(sampled_tuples, sampling_mode)
-        return sampled_tuples.reshape((4, batch_size, nb_samples)).long()
+        sampled_tuples = self.resample_known_positives(sampled_tuples, sampling_mode)
+        return sampled_tuples.long()
 
     def compute_filter_idx(self, tuples):
-        idx = torch.ones_like(tuples[0])
-        for i, l in enumerate(tuples[0]):
-            for j, head in enumerate(tuples[0, i]):
-                if (tuples[0, i, j], tuples[1, i, j], tuples[2, i, j], tuples[3, i, j]) in self.fact_set:
-                    idx[i, j] = 0
-                    idx[i, j] = 0
-                    idx[i, j] = 0
-                    idx[i, j] = 0
-        return idx
+        nb_examples, _, batch_size = tuples.shape
+        tuples_t = tuples.transpose(1,2).reshape((nb_examples*batch_size, 4)).cpu().numpy()
+        func = lambda row: tuple([row[i].item() for i in range(4)]) not in self.fact_set
+        idx = np.apply_along_axis(func, 1, tuples_t)
+        return torch.from_numpy(idx).reshape((nb_examples, batch_size)).to(self.device)
 
+    def corrupt_tuple(self, tuples, head_or_tail, return_batch_size=-1):
+        _, _, batch_size = tuples.shape
+        max_e_id = len(self.entity_ids) # we assume entity ids to start at 0
+        tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=0)
+        sample_ids = torch.arange(max_e_id, device=self.device).repeat([batch_size, 1]).t().unsqueeze(1)  #shape (max_e_id, 1, batch_size)
+        replacements = torch.cat((sample_ids, tuples_rep[:,1,:].unsqueeze(1), sample_ids, tuples_rep[:,3,:].unsqueeze(1)), dim=1).to(self.device)
+        if head_or_tail in ['head', 'h']:
+            is_head = torch.ones((max_e_id, 1, batch_size)) == 1
+        elif head_or_tail in ['tail', 't']:
+            is_head = torch.zeros((max_e_id, 1, batch_size)) == 1
+        else:
+            raise ValueError("Argument 'head_or_tail' must be 'h', 'head', 't' or 'tail'")
+        replace_mask = torch.cat((is_head, torch.zeros(max_e_id, 1, batch_size), ~is_head, torch.zeros(max_e_id, 1, batch_size)), dim=1).to(self.device)
+        inverse_replace_mask = torch.cat((~is_head, torch.ones(max_e_id, 1, batch_size), is_head, torch.ones(max_e_id, 1, batch_size)), dim=1).to(self.device)
+        sampled_tuples = (replace_mask * replacements + inverse_replace_mask * tuples_rep).long()
+
+        filter_idx = self.compute_filter_idx(sampled_tuples)
+        if return_batch_size > 0:
+            return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
+        return (sampled_tuples,), (filter_idx,)
     '''
     Replaces head by all other entities and filters out known positives
-    @return tensor of shape (3, batch_size, nb_entities) where filtered out triples contain -1
     '''
-
-    def corrupt_head(self, tuples):
-        batch_size = len(tuples[0])
-        # we assume entity ids to start at 0
-        max_e_id = len(self.entity_ids)
-        tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=1)
-        l = len(tuples_rep[0])
-        e_permutations = torch.repeat_interleave(torch.from_numpy(np.arange(max_e_id)), batch_size).to(self.device)
-
-        replace_mask = torch.stack((torch.ones(l), torch.zeros(l), torch.zeros(l), torch.zeros(l))).to(self.device)
-        inverse_replace_mask = torch.stack((torch.zeros(l), torch.ones(l), torch.ones(l), torch.ones(l))).to(self.device)
-        replacements = torch.stack((e_permutations, tuples_rep[1], e_permutations, tuples_rep[3])).to(self.device)
-        sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
-
-        sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
-        filter_idx = self.compute_filter_idx(
-            sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        return sampled_tuples, filter_idx
-
-    '''
-    Replaces head by all other entities and filters out known positives
-    @return tensor of shape (3, batch_size, nb_entities) where filtered out triples contain -1
-    '''
-
-    def corrupt_tail(self, tuples):
-        batch_size = len(tuples[0])
-        # we assume entity ids to start at 0
-        max_e_id = len(self.entity_ids)
-        tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=1)
-        l = len(tuples_rep[0])
-        e_permutations = torch.repeat_interleave(torch.from_numpy(np.arange(max_e_id)), batch_size).to(self.device)
-
-        replace_mask = torch.stack((torch.zeros(l), torch.zeros(l), torch.ones(l), torch.ones(l))).to(self.device)
-        inverse_replace_mask = torch.stack((torch.ones(l), torch.ones(l), torch.zeros(l), torch.zeros(l))).to(self.device)
-        replacements = torch.stack((e_permutations, tuples_rep[1], e_permutations, tuples_rep[3])).to(self.device)
-        sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
-
-        sampled_tuples = sampled_tuples.reshape((4, batch_size, max_e_id)).long()
-        filter_idx = self.compute_filter_idx(
-            sampled_tuples)  # indices of the tuples that are positive facts and get filtered out
-        return sampled_tuples, filter_idx
-
-    def to(self, device):
-        self.device = device
