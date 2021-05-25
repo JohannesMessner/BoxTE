@@ -18,8 +18,8 @@ from metrics import recall
 from metrics import rank
 from model import BoxTEmp
 from model import BoxTEmpMLP
-from model import BoxELoss
-from model import BoxEBinScore
+from boxeloss import BoxELoss
+from boxeloss import BoxEBinScore
 from data_utils import Temp_kg_loader
 
 
