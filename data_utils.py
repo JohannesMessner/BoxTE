@@ -176,6 +176,18 @@ class Temp_kg_loader():
                                                                                                                 time) in
                                                                                                                self.valid_data]
 
+    def resample_agnostic(self, sample):
+        return (sample[0], sample[1], sample[2]) in self.train_fact_set_no_timestamps
+
+    def resample_dependent(self, sample):
+        return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
+
+    def get_resample_func(self, sampling_mode):
+        if sampling_mode in ['a', 'agnostic']:
+            return self.resample_agnostic
+        if sampling_mode in ['d', 'dependent']:
+            return self.resample_dependent
+
     def needs_resample(self, sample, sampling_mode):
         """
         @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
@@ -193,12 +205,13 @@ class Temp_kg_loader():
         nb_examples, _, batch_size = tuples.shape
         max_e_id = len(self.entity_ids)
         tuples_t = tuples.transpose(1, 2).reshape((nb_examples * batch_size, 4)).cpu().numpy()
+        resample_func = self.get_resample_func(sampling_mode)
 
         def func(row):
-            t = tuple([row[i].item() for i in range(4)])
-            if not self.needs_resample(t, sampling_mode):
+            t = (row[0].item(), row[1].item(), row[2].item(), row[3].item())
+            if not resample_func(t):
                 return row
-            while self.needs_resample(t, sampling_mode):
+            while resample_func(t):
                 new_e = torch.randint(max_e_id, (1,)).item()
                 is_head = torch.randint(2, (1,)) == 1
                 if is_head.item():
