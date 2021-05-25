@@ -8,6 +8,7 @@ import pprint
 import time
 import warnings
 from datetime import datetime
+import timing
 from metrics import mean_rank
 from metrics import mean_rec_rank
 from metrics import hits_at_k
@@ -93,7 +94,10 @@ def parse_args(args):
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
                         help='Disable validation after first epoch.')
+    parser.add_argument('--time_execution', dest='time_execution', action='store_true',
+                        help='Roughly time execution of forward, backward, sampling, and validating.')
     parser.set_defaults(ignore_time=False)
+    parser.set_defaults(time_execution=False)
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
     return parser.parse_args(args)
@@ -145,66 +149,50 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
     best_params = None
     loss_progress = []
     validation_progress = []
-    epoch_times = []
-    sampling_times_epoch = []
-    for_times_epoch = []
-    back_times_epoch = []
+    timer = timing.ExecutionTimer()
+    if args.time_execution:
+        timer.activate()
     for i_epoch in range(args.num_epochs):
-        sampling_time = 0
-        for_time = 0
-        back_time = 0
-        epoch_start_time = time.time()
+        timer.log('start_epoch')
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
             data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
-            sampling_start_time = time.time()
+            timer.log('start_neg_sampling')
             negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
-            sampling_end_time = time.time()
-            sampling_time += (sampling_end_time-sampling_start_time)
-            for_start_time = time.time()
+            timer.log('end_neg_sampling')
+            timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
-            for_end_time = time.time()
-            for_time += (for_end_time - for_start_time)
+            timer.log('end_forward')
             loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
                 logging.warning('Loss is {}. Skipping to next mini batch.'.format(loss.item()))
                 continue
             epoch_losses.append(loss.item())
-            back_start_time = time.time()
+            timer.log('start_backward')
             loss.backward()
-            back_end_time = time.time()
-            back_time += (back_end_time - back_start_time)
+            timer.log('end_backward')
             optimizer.step()
-        sampling_times_epoch.append(sampling_time)
-        for_times_epoch.append(for_time)
-        back_times_epoch.append(back_time)
+        timer.log('end_epoch')
         loss_progress.append(np.mean(epoch_losses))
-        epoch_end_time = time.time()
-        epoch_times.append(epoch_end_time-epoch_start_time)
         if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
             logging.info('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
         if i_epoch == 0:
             logging.info('first epoch done')
         if i_epoch % args.validation_step == 0 and (i_epoch != 0 or (not args.no_initial_validation)):  # validation step
             logging.info('validation checkpoint reached')
-            logging.info('average epoch time: {} seconds'.format(torch.tensor(epoch_times).mean()))
-            epoch_times = []
-            logging.info('average sampling time per epoch: {} seconds'.format(torch.tensor(sampling_times_epoch).mean()))
-            logging.info('average forward time per epoch: {} seconds'.format(torch.tensor(for_times_epoch).mean()))
-            logging.info('average backward time per epoch: {} seconds'.format(torch.tensor(back_times_epoch).mean()))
-            sampling_times_epoch = []
-            metrics_start_time = time.time()
+            timer.log('start_validation')
             metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
-            metrics_end_time = time.time()
-            logging.info('metrics calculation time: {} seconds'.format(metrics_end_time-metrics_start_time))
+            timer.log('end_validation')
             logging.info('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
     logging.info('final validation')
+    timer.log('start_validation')
     metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+    timer.log('end_validation')
     logging.info('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
     if metrics['mrr'] > best_mrr:
@@ -222,14 +210,10 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
         h_at_3 = []
         h_at_5 = []
         h_at_10 = []
-        times = []
         for i_batch, batch in enumerate(dataloader):
             batch = torch.stack(batch).to(device).unsqueeze(0)
-            getting_corrupts_start_time = time.time()
             head_corrupts, head_f = kg.corrupt_tuple(batch, 'h', corrupt_triples_batch_size)
             tail_corrupts, tail_f = kg.corrupt_tuple(batch, 't', corrupt_triples_batch_size)
-            getting_corrupts_end_time = time.time()
-            times.append(getting_corrupts_end_time-getting_corrupts_start_time)
             embeddings = model.forward_positives(batch)
             ranks_head, ranks_tail = 1, 1
             for i, c_batch_head in enumerate(head_corrupts):
@@ -245,7 +229,6 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
             h_at_3.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=3))
             h_at_5.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=5))
             h_at_10.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=10))
-        logging.info('Time to get corrupts for validation: {} seconds'.format(torch.tensor(times).sum()))
         batch_sizes = torch.tensor(batch_sizes)
         data_size = torch.sum(batch_sizes)
         mr = (torch.tensor(mr) * batch_sizes).sum() / data_size
