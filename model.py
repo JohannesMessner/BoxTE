@@ -327,7 +327,7 @@ class BoxELoss():
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples, 'ignore_time': args.ignore_time}
         elif args.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
-            self.loss_fn = adversarial_loss_old
+            self.loss_fn = adversarial_loss
             self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp,
                               'ignore_time': args.ignore_time}
 
@@ -365,7 +365,7 @@ def dist(entity_emb, boxes):
     ub = boxes[:, :, :, 1, :]  # upper boundaries
     c = (lb + ub) / 2  # centres
     w = ub - lb + 1  # widths
-    k = 0.5 * (w - 1) * (w - 1 / w)
+    k = 0.5 * (w - 1) * (w - (1 / w))
     d = torch.where(torch.logical_and(torch.ge(entity_emb, lb), torch.le(entity_emb, ub)),
                     torch.abs(entity_emb - c) / w,
                     torch.abs(entity_emb - c) * w - k)
@@ -407,12 +407,13 @@ def uniform_loss(positives, negatives, gamma, w, ignore_time=False):
     return torch.mean(s1 - s2)
 
 
-def triple_probs(negative_triples, alpha):
-    scores = (score(*negative_triples) * alpha).exp()
+def triple_probs(negative_triples, alpha, ignore_time=False):
+    scores = ((1 / score(*negative_triples, ignore_time=ignore_time)) * alpha).exp()
     div = scores.sum(dim=0)
     return scores / div
 
-def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
+
+def adversarial_loss(positive_triple, negative_triples, gamma, alpha, ignore_time=False):
     """
     Calculates self-adversarial negative sampling loss as presented in RotatE, Sun et. al.
     @:param positive_triple tuple (entities, relations, times), for details see return of model.forward
@@ -421,5 +422,5 @@ def adversarial_loss_old(positive_triple, negative_triples, gamma, alpha, ignore
     @:param alpha hyperparameter, see RotatE paper
     @:param ignore_time if True, then time information is ignored and standard BoxE is executed
     """
-    triple_weights = triple_probs(negative_triples, alpha)
+    triple_weights = triple_probs(negative_triples, alpha, ignore_time)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights, ignore_time=ignore_time)

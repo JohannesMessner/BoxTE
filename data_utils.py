@@ -1,5 +1,10 @@
+import logging
+
 import torch
 import numpy as np
+import time
+import numbers
+import sys
 
 
 class Temp_kg_loader():
@@ -171,6 +176,18 @@ class Temp_kg_loader():
                                                                                                                 time) in
                                                                                                                self.valid_data]
 
+    def resample_agnostic(self, sample):
+        return (sample[0], sample[1], sample[2]) in self.train_fact_set_no_timestamps
+
+    def resample_dependent(self, sample):
+        return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
+
+    def get_resample_func(self, sampling_mode):
+        if sampling_mode in ['a', 'agnostic']:
+            return self.resample_agnostic
+        if sampling_mode in ['d', 'dependent']:
+            return self.resample_dependent
+
     def needs_resample(self, sample, sampling_mode):
         """
         @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
@@ -181,25 +198,39 @@ class Temp_kg_loader():
             return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
         raise ValueError("Invalid sampling mode. Use 'd' or 'a'")
 
-    def resample(self, tuples, sampling_mode):
+    def resample_known_positives(self, tuples, sampling_mode):
         """
         @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
         """
+        nb_examples, _, batch_size = tuples.shape
         max_e_id = len(self.entity_ids)
-        no_replacement_performed = True
-        for i_sample, sample in enumerate(tuples):
-            for i_batch, batch in enumerate(sample.transpose(0,1)):
-                if self.needs_resample(tuples[i_sample, :, i_batch], sampling_mode):
-                    # TODO instead of returning if a resample has been performed, resample here until true negative is found
-                    # that should avoid going over the entire dataset again and therefore be more efficient
-                    no_replacement_performed = False
-                    new_e = torch.randint(max_e_id, (1,))
-                    is_head = torch.randint(2, (1,)) == 1
-                    if is_head.item():
-                        tuples[i_sample, 0, i_batch] = new_e.item()
-                    else:
-                        tuples[i_sample, 2, i_batch] = new_e.item()
-        return tuples, no_replacement_performed
+        tuples_t = tuples.transpose(1, 2).reshape((nb_examples * batch_size, 4)).cpu().numpy()
+        resample_func = self.get_resample_func(sampling_mode)
+
+        def func(row):
+            t = (row[0].item(), row[1].item(), row[2].item(), row[3].item())
+            if not resample_func(t):
+                return row
+            while resample_func(t):
+                new_e = torch.randint(max_e_id, (1,)).item()
+                is_head = torch.randint(2, (1,)) == 1
+                if is_head.item():
+                    t = ([new_e, row[1], row[2], row[3]])
+                else:
+                    t = ([row[0], row[1], new_e, row[3]])
+            return np.array(t)
+
+        tuples_t = np.apply_along_axis(func, 1, tuples_t)
+        if tuples_t.dtype not in ['float64', 'float32', 'float16', 'complex64', 'complex128', 'int64', 'int32', 'int16', 'int8', 'uint8', 'bool']:
+            logging.warning('Array dtype not supported. No filtering in this iteration. Dtype: {}'.format(tuples_t.dtype))
+            for row in tuples_t:
+                for e in row:
+                    if not isinstance(e, numbers.Number):
+                        logging.info(str(e))
+            #logging.info(str(tuples_t))
+            sys.exit()
+        tuples_t = torch.from_numpy(tuples_t).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
+        return tuples_t
 
     def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
         _, _, batch_size = tuples.shape
@@ -212,20 +243,15 @@ class Temp_kg_loader():
         inverse_replace_mask = torch.cat((~is_head, torch.ones(nb_samples, 1, batch_size), is_head, torch.ones(nb_samples, 1, batch_size)), dim=1).to(self.device)
         sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
         # filter out and replace known positive triples
-        filtering_done = False
-        while not filtering_done:
-            sampled_tuples, filtering_done = self.resample(sampled_tuples, sampling_mode)
+        sampled_tuples = self.resample_known_positives(sampled_tuples, sampling_mode)
         return sampled_tuples.long()
 
     def compute_filter_idx(self, tuples):
         nb_examples, _, batch_size = tuples.shape
-        idx = torch.ones((nb_examples, batch_size), dtype=torch.long, device=self.device)
-        tuples_t = tuples.transpose(1,2)
-        for i_example, example in enumerate(tuples_t):
-            for i_batch, batch in enumerate(example):
-                if tuple([tuples_t[i_example, i_batch, pos] for pos in range(4)]) in self.fact_set:  # check if fact is knowingly true
-                    idx[i_example, i_batch] = 0
-        return idx
+        tuples_t = tuples.transpose(1,2).reshape((nb_examples*batch_size, 4)).cpu().numpy()
+        func = lambda row: tuple([row[i].item() for i in range(4)]) not in self.fact_set
+        idx = np.apply_along_axis(func, 1, tuples_t)
+        return torch.from_numpy(idx).reshape((nb_examples, batch_size)).to(self.device)
 
     def corrupt_tuple(self, tuples, head_or_tail, return_batch_size=-1):
         _, _, batch_size = tuples.shape

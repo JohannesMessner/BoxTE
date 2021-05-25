@@ -8,6 +8,7 @@ import pprint
 import time
 import warnings
 from datetime import datetime
+import timing
 from metrics import mean_rank
 from metrics import mean_rec_rank
 from metrics import hits_at_k
@@ -93,7 +94,10 @@ def parse_args(args):
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
                         help='Disable validation after first epoch.')
+    parser.add_argument('--time_execution', dest='time_execution', action='store_true',
+                        help='Roughly time execution of forward, backward, sampling, and validating.')
     parser.set_defaults(ignore_time=False)
+    parser.set_defaults(time_execution=False)
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
     return parser.parse_args(args)
@@ -145,20 +149,31 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
     best_params = None
     loss_progress = []
     validation_progress = []
+    timer = timing.ExecutionTimer()
+    if args.time_execution:
+        timer.activate()
     for i_epoch in range(args.num_epochs):
+        timer.log('start_epoch')
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
             data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
+            timer.log('start_neg_sampling')
             negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
+            timer.log('end_neg_sampling')
+            timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
+            timer.log('end_forward')
             loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
                 logging.warning('Loss is {}. Skipping to next mini batch.'.format(loss.item()))
                 continue
             epoch_losses.append(loss.item())
+            timer.log('start_backward')
             loss.backward()
+            timer.log('end_backward')
             optimizer.step()
+        timer.log('end_epoch')
         loss_progress.append(np.mean(epoch_losses))
         if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
             logging.info('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
@@ -166,14 +181,18 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             logging.info('first epoch done')
         if i_epoch % args.validation_step == 0 and (i_epoch != 0 or (not args.no_initial_validation)):  # validation step
             logging.info('validation checkpoint reached')
+            timer.log('start_validation')
             metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+            timer.log('end_validation')
             logging.info('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
     logging.info('final validation')
+    timer.log('start_validation')
     metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+    timer.log('end_validation')
     logging.info('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
     if metrics['mrr'] > best_mrr:
