@@ -19,6 +19,7 @@ from metrics import rank
 from model import BoxTEmp
 from model import BoxTEmpMLP
 from model import BoxTEmpRelationMLP
+from model import BoxTEmpRelationSingleMLP
 from boxeloss import BoxELoss
 from boxeloss import BoxEBinScore
 from data_utils import Temp_kg_loader
@@ -90,7 +91,7 @@ def parse_args(args):
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
-                        help="Choose a model variant from [base, time_box_mlp, relation_mlp].")
+                        help="Choose a model variant from [base, time_box_mlp, relation_mlp, relation_single_mlp].")
     parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
@@ -104,7 +105,7 @@ def parse_args(args):
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
     args = parser.parse_args(args)
-    if args.model_variant in ['relation_mlp']:
+    if args.model_variant in ['relation_mlp', 'relation_single_mlp']:
         args.ignore_time = True
     return args
 
@@ -169,6 +170,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             timer.log('end_neg_sampling')
             timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
+            print('forwarded')
             timer.log('end_forward')
             loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
@@ -283,6 +285,10 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
                            weight_init_args=args.weight_init_args).to(device)
     elif args.model_variant == 'relation_mlp':
         model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                           weight_init_args=args.weight_init_args).to(device)
+    elif args.model_variant == 'relation_single_mlp':
+        model = BoxTEmpRelationSingleMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                            weight_init_args=args.weight_init_args).to(device)
     else:

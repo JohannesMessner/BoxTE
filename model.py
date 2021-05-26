@@ -258,31 +258,32 @@ class BoxTEmpRelationMLP(BaseBoxE):
             mlp_layers.append(nn.ReLU())
         mlp_layers.append(nn.Linear(nn_width, 4*self.embedding_dim))
         time_transition = nn.Sequential(*mlp_layers)
-        self.time_transition_list = nn.ModuleList()
+        self.time_transition = nn.ModuleList()
         for r_id in relation_ids:
-            self.time_transition_list.append(copy.deepcopy(time_transition))
+            self.time_transition.append(copy.deepcopy(time_transition))
         self.to(device)
 
     def params(self):
         return [self.entity_bases.weight, self.entity_bumps.weight, self.initial_r_head_boxes, self.initial_r_tail_boxes] \
-               + list(self.time_transition_list.parameters())
+               + list(self.time_transition.parameters())
 
     def to(self, device):
         super().to(device)
-        self.time_transition_list.to(device)
+        self.time_transition.to(device)
         self.initial_r_head_boxes.to(device)
+        self.initial_r_tail_boxes.to(device)
         return self
 
     def state_dict(self):
         d = {'entity bases': self.entity_bases.state_dict(), 'entity bumps': self.entity_bumps.state_dict(),
-             'time transitions': self.time_transition_list.state_dict(), 'init r head': self.initial_r_head_boxes,
+             'time transitions': self.time_transition.state_dict(), 'init r head': self.initial_r_head_boxes,
              'init r tail': self.initial_r_tail_boxes}
         return d
 
     def load_state_dict(self, state_dict):
         self.entity_bases.load_state_dict(state_dict['entity bases'])
         self.entity_bumps.load_state_dict(state_dict['entity bumps'])
-        self.time_transition_list.load_state_dict(state_dict['time transitions'])
+        self.time_transition.load_state_dict(state_dict['time transitions'])
         self.initial_r_head_boxes = state_dict['init r head']
         self.initial_r_tail_boxes = state_dict['init r tail']
         return self
@@ -296,7 +297,7 @@ class BoxTEmpRelationMLP(BaseBoxE):
             current_state = torch.stack((init_h, init_t), dim=1).flatten().to(self.device)
             time_head_boxes, time_tail_boxes = [], []
             for t in range(self.max_time):
-                next_time = self.time_transition_list[i_r](current_state)
+                next_time = self.time_transition[i_r](current_state)
                 time_head_boxes.append(next_time[:2 * self.embedding_dim])
                 time_tail_boxes.append(next_time[2 * self.embedding_dim:])
                 current_state = torch.cat(
@@ -315,6 +316,71 @@ class BoxTEmpRelationMLP(BaseBoxE):
 
         r_head_boxes = all_r_head_boxes[rel_idx, time_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
         r_tail_boxes = all_r_tail_boxes[rel_idx, time_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
+        head_bases = self.entity_bases(e_h_idx)
+        head_bumps = self.entity_bumps(e_h_idx)
+        tail_bases = self.entity_bases(e_t_idx)
+        tail_bumps = self.entity_bumps(e_t_idx)
+        entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
+        return entity_embs, relation_embs, torch.zeros_like(relation_embs)  # return dummy for time boxes
+
+
+class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
+    """
+    Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
+    Enables extrapolation on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu', weight_init_args=(0, 1)):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback, device, weight_init_args)
+        self.nb_relations = len(self.relation_ids)
+        self.initial_r_head_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim),
+                                                device=device)  # lower and upper boundaries, therefore 2*embedding_dim
+        self.initial_r_tail_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim), device=device)
+        mlp_layers = [nn.Linear(4*self.embedding_dim*lookback*len(self.relation_ids), nn_width), nn.ReLU()]  # 4* because of lower/upper and head/tail
+        for i in range(nn_depth):
+            mlp_layers.append(nn.Linear(nn_width, nn_width))
+            mlp_layers.append(nn.ReLU())
+        mlp_layers.append(nn.Linear(nn_width, 4*self.embedding_dim*len(self.relation_ids)))
+        self.time_transition = nn.Sequential(*mlp_layers)
+        self.to(device)
+
+    def unroll_time(self):
+        initial_times = torch.arange(0, self.lookback, device=self.device)
+        init_head_boxes = self.initial_r_head_boxes[initial_times]
+        init_tail_boxes = self.initial_r_tail_boxes[initial_times]
+        init_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
+        current_state = init_state
+        time_head_boxes, time_tail_boxes = [], []
+        for t in range(self.max_time):
+            next_time = self.time_transition(current_state)
+            time_head_boxes.append(next_time[:self.nb_relations * 2 * self.embedding_dim].view((self.nb_relations, 2*self.embedding_dim)))
+            time_tail_boxes.append(next_time[self.nb_relations * 2 * self.embedding_dim:].view((self.nb_relations, 2*self.embedding_dim)))
+            current_state = torch.cat(
+                (current_state[self.nb_relations * 4 * self.embedding_dim:], next_time))  # cut off upper/lower and head/
+        return torch.cat((init_head_boxes, torch.stack(time_head_boxes))).to(self.device), \
+               torch.cat((init_tail_boxes, torch.stack(time_tail_boxes))).to(self.device)
+
+
+        #  state is single dim tensor containing heads r1 t1 -> heads r2 t1 -> tails r1 t1 -> tails r2 t1 -> ... -> tails rn tm
+        current_state = torch.cat((self.initial_r_head_boxes, self.initial_r_tail_boxes), dim=1).flatten().to(self.device)
+        all_head_boxes, all_tail_boxes = [], []
+        for t in range(self.max_time):
+            next_time = self.time_transition(current_state)
+            all_head_boxes.append(next_time[:self.nb_relations * 2 * self.embedding_dim].view((self.nb_relations, 2*self.embedding_dim)))
+            all_tail_boxes.append(next_time[self.nb_relations * 2 * self.embedding_dim:].view((self.nb_relations, 2*self.embedding_dim)))
+            current_state = torch.cat((current_state[self.nb_relations * 4 * self.embedding_dim:], next_time))  # cut off upper/lower and head/tail
+        return torch.cat((self.initial_r_head_boxes, torch.stack(all_head_boxes)), dim=0),\
+               torch.cat((self.initial_r_tail_boxes, torch.stack(all_tail_boxes)), dim=0)
+
+    def compute_embeddings(self, tuples):
+        nb_examples, _, batch_size = tuples.shape
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        time_idx = tuples[:, 3]
+        all_r_head_boxes, all_r_tail_boxes = self.unroll_time()  # shape (timestamp, relation, 2*embedding_dim)
+
+        r_head_boxes = all_r_head_boxes[time_idx, rel_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
+        r_tail_boxes = all_r_tail_boxes[time_idx, rel_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
         head_bases = self.entity_bases(e_h_idx)
         head_bumps = self.entity_bumps(e_h_idx)
         tail_bases = self.entity_bases(e_t_idx)
