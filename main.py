@@ -103,7 +103,10 @@ def parse_args(args):
     parser.set_defaults(time_execution=False)
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
-    return parser.parse_args(args)
+    args = parser.parse_args(args)
+    if args.model_variant in ['relation_mlp']:
+        args.ignore_time = True
+    return args
 
 
 def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, args,
@@ -279,7 +282,6 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                            weight_init_args=args.weight_init_args).to(device)
     elif args.model_variant == 'relation_mlp':
-        args.ignore_time = True
         model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                            weight_init_args=args.weight_init_args).to(device)
