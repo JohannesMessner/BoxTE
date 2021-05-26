@@ -18,6 +18,7 @@ from metrics import recall
 from metrics import rank
 from model import BoxTEmp
 from model import BoxTEmpMLP
+from model import BoxTEmpRelationMLP
 from boxeloss import BoxELoss
 from boxeloss import BoxEBinScore
 from data_utils import Temp_kg_loader
@@ -88,6 +89,8 @@ def parse_args(args):
                         help="Number of past time steps considered to predict next time. Only relevant if '--extrapolate' is set.")
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
+    parser.add_argument('--model_variant', default='base', type=str,
+                        help="Choose a model variant from [base, time_box_mlp, relation_mlp].")
     parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
@@ -271,8 +274,13 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
-    if args.extrapolate:
+    if args.model_variant == 'time_box_mlp':
         model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                           weight_init_args=args.weight_init_args).to(device)
+    elif args.model_variant == 'relation_mlp':
+        args.ignore_time = True
+        model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                            weight_init_args=args.weight_init_args).to(device)
     else:
