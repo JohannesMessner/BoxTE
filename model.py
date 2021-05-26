@@ -293,7 +293,7 @@ class BoxTEmpRelationMLP(BaseBoxE):
         all_tail_boxes = []
         for r_id in self.relation_ids:
             i_r = self.get_r_idx_by_id(r_id)
-            init_h, init_t = self.initial_r_head_boxes[i_r, :, :], self.initial_r_tail_boxes[i_r, :, :]  # shape (lookback, 2*emb_dim)
+            init_h, init_t = self.initial_r_head_boxes[i_r, :, :].to(self.device), self.initial_r_tail_boxes[i_r, :, :].to(self.device)  # shape (lookback, 2*emb_dim)
             current_state = torch.stack((init_h, init_t), dim=1).flatten().to(self.device)
             time_head_boxes, time_tail_boxes = [], []
             for t in range(self.max_time):
@@ -345,8 +345,8 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
 
     def unroll_time(self):
         initial_times = torch.arange(0, self.lookback, device=self.device)
-        init_head_boxes = self.initial_r_head_boxes[initial_times]
-        init_tail_boxes = self.initial_r_tail_boxes[initial_times]
+        init_head_boxes = self.initial_r_head_boxes[initial_times].to(self.device)
+        init_tail_boxes = self.initial_r_tail_boxes[initial_times].to(self.device)
         init_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
         current_state = init_state
         time_head_boxes, time_tail_boxes = [], []
