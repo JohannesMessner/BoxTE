@@ -170,7 +170,6 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             timer.log('end_neg_sampling')
             timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
-            print('forwarded')
             timer.log('end_forward')
             loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
