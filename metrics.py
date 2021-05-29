@@ -1,5 +1,5 @@
 import torch
-from  model import score
+from boxeloss import score
 
 
 def precision(tp, fp):
