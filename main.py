@@ -72,6 +72,8 @@ def parse_args(args):
                         help='Alpha parameter for adversarial negative sampling loss.')
     parser.add_argument('--loss_type', default='u', type=str,
                         help="Toggle between uniform ('u') and self-adversarial ('a') loss.")
+    parser.add_argument('--gradient_clipping', default=-1, type=float,
+                        help="Specify a s.t. gradients will be clipped to (-a,a). Default is no clipping.")
     parser.add_argument('--num_negative_samples', default=10, type=int,
                         help="Number of negative samples per positive (true) triple.")
     parser.add_argument('--weight_init', default='u', type=str,
@@ -179,6 +181,8 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             timer.log('start_backward')
             loss.backward()
             timer.log('end_backward')
+            if args.gradient_clipping > 0:
+                torch.nn.utils.clip_grad_norm_(model.params(), args.gradient_clipping)
             optimizer.step()
         timer.log('end_epoch')
         loss_progress.append(np.mean(epoch_losses))
@@ -341,6 +345,7 @@ def run_loop(saved_params_dir=None):
         if not os.path.exists(args.log_dir):
             os.makedirs(args.log_dir)
         complete_filename = args.log_dir + '/' + timestamp + '-' + args.log_filename
+        print('saving log under filename {}'.format(complete_filename))
         logging.basicConfig(filename=complete_filename, level=logging.INFO)
     else:
         logging.basicConfig(handlers=[logging.StreamHandler()], level=logging.INFO)
