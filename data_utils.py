@@ -2,12 +2,11 @@ import logging
 
 import torch
 import numpy as np
-import time
 import numbers
 import sys
 
 
-class Temp_kg_loader():
+class TempKgLoader():
     """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
 
     def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu', entity_subset=-1):

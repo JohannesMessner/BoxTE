@@ -1,5 +1,6 @@
 import torch
 
+
 class BoxELoss():
     """
     Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
@@ -17,31 +18,14 @@ class BoxELoss():
         return self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
 
 
-class BoxEBinScore():
-    def __init__(self, options):
-        self.ignore_time = options.ignore_time
-
-    def __call__(self, r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbox):
-        return binary_score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbox,
-                            ignore_time=self.ignore_time)
-
-
-def binary_dist(entity_emb, boxes):
-    lb = boxes[:, 0, :]  # lower boundries
-    ub = boxes[:, 1, :]  # upper boundries
-    # c = (lb + ub)/2  # centres
-    # w = ub - lb + 1  # widths
-    # k = 0.5*(w - 1) * (w - 1/w)
-    return torch.logical_and(torch.ge(entity_emb, lb), torch.le(entity_emb, ub))
-
-
 def dist(entity_emb, boxes):
-    # assumes box is tensor of shape (nb_examples, batch_size, arity, 2, embedding_dim)
-    # nb_examples is relevant for negative samples; for positive examples it is 1
-    # so it contains multiple boxes, where each box has lower and upper boundries in embdding_dim dimensions
-    # e.g box[0, n, 0, :] is the lower boundry of the n-th box
-    #
-    # entities are of shape (nb_examples, batch_size, arity, embedding_dim)
+    """
+     assumes box is tensor of shape (nb_examples, batch_size, arity, 2, embedding_dim)
+     nb_examples is relevant for negative samples; for positive examples it is 1
+     so it contains multiple boxes, where each box has lower and upper boundaries in embedding_dim dimensions
+     e.g box[0, n, 0, :] is the lower boundary of the n-th box
+     entities are of shape (nb_examples, batch_size, arity, embedding_dim)
+    """
 
     lb = boxes[:, :, :, 0, :]  # lower boundaries
     ub = boxes[:, :, :, 1, :]  # upper boundaries
@@ -61,17 +45,6 @@ def score(entities, relations, times, ignore_time=False, order=2, time_weight=0.
         return time_weight * d_t + (1 - time_weight) * d_r
     else:
         return d_r
-
-
-def binary_score(r_headbox, r_tailbox, e_head, e_tail, time_headbox, time_tailbox, ignore_time=False):
-    a = torch.all(binary_dist(e_head, r_headbox), dim=1)
-    b = torch.all(binary_dist(e_tail, r_tailbox), dim=1)
-    c = torch.all(binary_dist(e_head, time_headbox), dim=1)
-    d = torch.all(binary_dist(e_tail, time_tailbox), dim=1)
-    if ignore_time:
-        c = torch.ones_like(c)
-        d = torch.ones_like(d)
-    return torch.logical_and(a, torch.logical_and(b, torch.logical_and(c, d)))
 
 
 def uniform_loss(positives, negatives, gamma, w, ignore_time=False):

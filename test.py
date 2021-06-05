@@ -3,7 +3,7 @@ from datetime import datetime
 import logging
 import os
 from main import test, parse_args
-from data_utils import Temp_kg_loader
+from data_utils import TempKgLoader
 from model import BoxTEmp, BoxTEmpMLP
 import pprint
 import time
@@ -34,8 +34,8 @@ def test_model():
         logging.basicConfig(handlers=[logging.StreamHandler()], level=logging.INFO)
     logging.info('Running on {}'.format(device))
     logging.info('%s', args)
-    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets,
-                        device=device, entity_subset=args.entity_subset)
+    kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets,
+                      device=device, entity_subset=args.entity_subset)
     loader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
     if args.extrapolate:
         model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),

@@ -6,23 +6,18 @@ import os
 import argparse
 import pprint
 import time
-import warnings
 from datetime import datetime
 import timing
 from metrics import mean_rank
 from metrics import mean_rec_rank
 from metrics import hits_at_k
-from metrics import retrieval_metrics
-from metrics import precision
-from metrics import recall
 from metrics import rank
 from model import BoxTEmp
 from model import BoxTEmpMLP
 from model import BoxTEmpRelationMLP
 from model import BoxTEmpRelationSingleMLP
 from boxeloss import BoxELoss
-from boxeloss import BoxEBinScore
-from data_utils import Temp_kg_loader
+from data_utils import TempKgLoader
 
 
 def parse_args(args):
@@ -106,46 +101,6 @@ def parse_args(args):
     if args.model_variant in ['relation_mlp', 'relation_single_mlp']:
         args.ignore_time = True
     return args
-
-
-def train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, args,
-                      combined_loader=None, device='cpu'):
-    logging.info('Training started')
-    loss_progress = []
-    validation_progress = []
-    for i_epoch in range(args.num_epochs):
-        epoch_losses = []
-        for i_batch, data in enumerate(trainloader):
-            data = torch.stack(data).to(device).unsqueeze(0)
-            optimizer.zero_grad()
-            negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
-            positive_emb, negative_emb = model(data, negatives)
-            loss = loss_fn(positive_emb, negative_emb)
-            epoch_losses.append(loss.item())
-            loss.backward()
-            optimizer.step()
-        loss_progress.append(np.mean(epoch_losses))
-        if args.print_loss_step > 0 and i_epoch % args.print_loss_step == 0:
-            logging.info('MEAN EPOCH LOSS: {}'.format(loss_progress[-1]))
-        if i_epoch == 0:
-            logging.info('first epoch done')
-        if i_epoch % args.validation_step == 0:  # validation step
-            logging.info('validation checkpoint reached')
-            precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
-            logging.info('PRECISION: {}, RECALL: {}'.format(precision, recall))
-            validation_progress.append((precision, recall))
-            if combined_loader is not None:
-                uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer,
-                                                         args, device=device)
-                logging.info('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
-
-    precision, recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
-    logging.info('PRECISION: {}, RECALL: {}'.format(precision, recall))
-    validation_progress.append((precision, recall))
-    if combined_loader is not None:
-        uf_precision, uf_recall = test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, args, device=device)
-        logging.info('UNFILTERED PRECISION: {}, RECALL: {}'.format(uf_precision, uf_recall))
-    return precision, recall, validation_progress
 
 
 def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device='cpu'):
@@ -252,29 +207,8 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
             'h@10': h_at_10.item()}
 
 
-def test_retrieval(kg, testloader, model, loss_fn, binscore_fn, optimizer, options, device='cpu'):
-    with torch.no_grad():
-        tps, tns, fps, fns = [], [], [], []  # true positives, true negatives, false p's, false n's
-        for i_batch, batch in enumerate(testloader):
-            batch = torch.stack(batch).to(device).unsqueeze(0)
-            head_corrupts, head_f = kg.corrupt_head(batch)
-            tail_corrupts, tail_f = kg.corrupt_tail(batch)
-            embeddings, head_c_embeddings = model.forward(batch, head_corrupts)
-            embeddings, tail_c_embeddings = model.forward(batch, tail_corrupts)
-            tp, tn, fp, fn = retrieval_metrics(embeddings, head_c_embeddings, tail_c_embeddings, head_f, tail_f,
-                                               binscore_fn)
-            logging.log('tp {} tn {} fp {} fn {}'.format(tp, tn, fp, fn))
-            tps.append(tp)
-            tns.append(tn)
-            fps.append(fp)
-            fns.append(fn)
-    p = precision(np.sum(tps), np.sum(fps))
-    r = recall(np.sum(tps), np.sum(fns))
-    return p, r
-
-
 def train_test_val(args, device='cpu', saved_params_dir=None):
-    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device, entity_subset=args.entity_subset)
+    kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device, entity_subset=args.entity_subset)
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
@@ -304,20 +238,6 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
         model = model.load_state_dict(best_params)
     metrics = test(kg, testloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     return metrics, progress, copy.deepcopy(model.state_dict())
-
-
-def run_train_test_binary(args, device='cpu'):
-    kg = Temp_kg_loader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device)
-    trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
-    testloader = kg.get_combined_loader(datasets=['test', 'valid'], batch_size=args.batch_size, shuffle=True)
-    combined_loader = kg.get_combined_loader(datasets=['test', 'valid', 'train'], batch_size=args.batch_size,
-                                             shuffle=True)
-    model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps()).to(device)
-    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
-    loss_fn = BoxELoss(args)
-    binscore_fn = BoxEBinScore(args)
-    return train_test_binary(kg, trainloader, testloader, model, loss_fn, binscore_fn, optimizer, args,
-                             combined_loader=combined_loader)
 
 
 def save_data(args, metrics, model_params, progress, timestamp):

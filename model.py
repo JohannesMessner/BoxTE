@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import copy
 
+
 class BaseBoxE():
     """
         BoxE model extended with boxes for timestamps.
