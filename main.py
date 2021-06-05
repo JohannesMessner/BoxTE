@@ -58,12 +58,8 @@ def parse_args(args):
                         help='Dimensionality of the embedding.')
     parser.add_argument('--learning_rate', default=.0001, type=float,
                         help='Learning rate.')
-    parser.add_argument('--log_step', default=10, type=int,
-                        help='Number of steps to print and record the log.')
     parser.add_argument('--validation_step', default=500, type=int,
                         help='Number of epochs in between validations.')
-    parser.add_argument('--normed_bumps', action='store_true',
-                        help='Do not normalize the image embeddings.')
     parser.add_argument('--truncate_datasets', default=-1, type=int,
                         help='Truncate datasets to a subset of entries.')
     parser.add_argument('--entity_subset', default=-1, type=int,
@@ -89,7 +85,7 @@ def parse_args(args):
     parser.add_argument('--nn_width', default=300, type=int,
                         help="Width of the time-approximating MLP. Only relevant if '--extrapolate' is set.")
     parser.add_argument('--lookback', default=1, type=int,
-                        help="Number of past time steps considered to predict next time. Only relevant if '--extrapolate' is set.")
+                        help="Number of past time steps considered to predict next time. Only relevant for mlp model variants.")
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
