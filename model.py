@@ -10,7 +10,7 @@ class BaseBoxE():
         """
 
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu',
-                 weight_init_args=(0, 1)):
+                 weight_init_args=(0, 1), norm_embeddings=False):
         if weight_init == 'u':
             self.init_f = torch.nn.init.uniform_
         elif weight_init == 'n':
@@ -18,6 +18,10 @@ class BaseBoxE():
         else:
             raise ValueError(
                 "Invalid value for argument 'weight_init'. Use 'u' for uniform or 'n' for normal weight initialization.")
+        if norm_embeddings:
+            self.embedding_norm_fn = nn.Tanh()
+        else:
+            self.embedding_norm_fn = nn.Identity()
         self.device = device
         self.embedding_dim = embedding_dim
         self.relation_ids = relation_ids
@@ -85,8 +89,8 @@ class BaseBoxE():
         head_bumps = self.entity_bumps(e_h_idx)
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
-        return torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), \
-               torch.stack((r_head_boxes, r_tail_boxes), dim=2)
+        return self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2)), \
+               self.embedding_norm_fn(torch.stack((r_head_boxes, r_tail_boxes), dim=2))
 
     def forward_negatives(self, negatives):
         """
@@ -125,8 +129,8 @@ class BoxTEmp(BaseBoxE):
     BoxE model extended with boxes for timestamps.
     Can do interpolation completion on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1)):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
         self.time_head_boxes = nn.Embedding(self.max_time,
                                             2 * embedding_dim)  # lower and upper boundaries, therefore 2*embedding_dim
         self.time_tail_boxes = nn.Embedding(self.max_time, 2 * embedding_dim)
@@ -163,7 +167,7 @@ class BoxTEmp(BaseBoxE):
         time_idx = tuples[:, 3]
         time_head_boxes = self.time_head_boxes(time_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
         time_tail_boxes = self.time_tail_boxes(time_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
-        return entity_embs, relation_embs, torch.stack((time_head_boxes, time_tail_boxes), dim=2)
+        return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
 class BoxTEmpMLP(BaseBoxE):
@@ -171,8 +175,9 @@ class BoxTEmpMLP(BaseBoxE):
     Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu', weight_init_args=(0, 1)):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
         self.lookback = lookback
         self.nn_depth = nn_depth
         self.nn_width = nn_width
@@ -234,7 +239,7 @@ class BoxTEmpMLP(BaseBoxE):
         all_time_head_boxes, all_time_tail_boxes = self.unroll_time()
         time_head_boxes = all_time_head_boxes(time_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
         time_tail_boxes = all_time_tail_boxes(time_idx).view((nb_examples, batch_size, 2, self.embedding_dim))
-        return entity_embs, relation_embs, torch.stack((time_head_boxes, time_tail_boxes), dim=2)
+        return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
 class BoxTEmpRelationMLP(BaseBoxE):
@@ -242,8 +247,9 @@ class BoxTEmpRelationMLP(BaseBoxE):
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu', weight_init_args=(0, 1)):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
         self.lookback = lookback
         self.nn_depth = nn_depth
         self.nn_width = nn_width
@@ -322,7 +328,7 @@ class BoxTEmpRelationMLP(BaseBoxE):
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return entity_embs, relation_embs, torch.zeros_like(relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
 
 
 class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
@@ -330,8 +336,10 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300, lookback=1, device='cpu', weight_init_args=(0, 1)):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback, device, weight_init_args)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback,
+                         device, weight_init_args, norm_embeddings=False)
         self.nb_relations = len(self.relation_ids)
         self.initial_r_head_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim),
                                                 device=device)  # lower and upper boundaries, therefore 2*embedding_dim
@@ -387,4 +395,4 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return entity_embs, relation_embs, torch.zeros_like(relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes

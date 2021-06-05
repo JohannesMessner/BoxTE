@@ -93,7 +93,10 @@ def parse_args(args):
                         help='Disable validation after first epoch.')
     parser.add_argument('--time_execution', dest='time_execution', action='store_true',
                         help='Roughly time execution of forward, backward, sampling, and validating.')
+    parser.add_argument('--norm_embeddings', dest='norm_embeddings', action='store_true',
+                        help='Norm all embeddings using tanh function.')
     parser.set_defaults(ignore_time=False)
+    parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
@@ -215,18 +218,18 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     if args.model_variant == 'time_box_mlp':
         model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
     elif args.model_variant == 'relation_mlp':
         model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
     elif args.model_variant == 'relation_single_mlp':
         model = BoxTEmpRelationSingleMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
     else:
         model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                        weight_init=args.weight_init, weight_init_args=args.weight_init_args).to(device)
+                        weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
         model = model.load_state_dict(params)
