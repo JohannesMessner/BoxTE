@@ -15,6 +15,8 @@ class BaseBoxE():
             self.init_f = torch.nn.init.uniform_
         elif weight_init == 'n':
             self.init_f = torch.nn.init.normal_
+        elif weight_init == 'default':
+            self.init_f = lambda x, *args: x  # don't change initialization
         else:
             raise ValueError(
                 "Invalid value for argument 'weight_init'. Use 'u' for uniform or 'n' for normal weight initialization.")

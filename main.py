@@ -67,8 +67,9 @@ def parse_args(args):
                         help="Specify a s.t. gradients will be clipped to (-a,a). Default is no clipping.")
     parser.add_argument('--num_negative_samples', default=10, type=int,
                         help="Number of negative samples per positive (true) triple.")
-    parser.add_argument('--weight_init', default='u', type=str,
-                        help="Type of weight initialization for the model.")
+    parser.add_argument('--weight_init', default='default', type=str,
+                        help="Type of weight initialization for the model; 'u' -> uniform dist, 'n' -> normal dist,"
+                             "'default' -> default Pytorch initialization.")
     parser.add_argument('--weight_init_args', default=[0, 0.5], nargs=2, type=float,
                         help="Parameters to be passed to weight initialization.")
     parser.add_argument('--print_loss_step', default=-1, type=int,
@@ -76,7 +77,7 @@ def parse_args(args):
     parser.add_argument('--neg_sampling_type', default='a', type=str,
                         help="Toggle between time agnostic ('a') and time dependent ('d') negative sampling.")
     parser.add_argument('--nn_depth', default=3, type=int,
-                        help="Number of hidden layers in the time-approximating MLP. Only relevant if '--extrapolate' is set.")
+                        help="Number of hidden layers in the time-approximating MLP. Only relevant in mlp model variants.")
     parser.add_argument('--nn_width', default=300, type=int,
                         help="Width of the time-approximating MLP. Only relevant if '--extrapolate' is set.")
     parser.add_argument('--lookback', default=1, type=int,
