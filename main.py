@@ -169,40 +169,28 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
 
 def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1024):
     with torch.no_grad():
-        batch_sizes = []
-        mr = []
-        mrr = []
-        h_at_1 = []
-        h_at_3 = []
-        h_at_5 = []
-        h_at_10 = []
+        ranks_head, ranks_tail = [], []
         for i_batch, batch in enumerate(dataloader):
             batch = torch.stack(batch).to(device).unsqueeze(0)
             head_corrupts, head_f = kg.corrupt_tuple(batch, 'h', corrupt_triples_batch_size)
             tail_corrupts, tail_f = kg.corrupt_tuple(batch, 't', corrupt_triples_batch_size)
             embeddings = model.forward_positives(batch)
-            ranks_head, ranks_tail = 1, 1
+            batch_ranks_head, batch_ranks_tail = 1, 1
             for i, c_batch_head in enumerate(head_corrupts):
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
-                ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
-            batch_sizes.append(batch.shape[2])
-            mr.append(mean_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
-            mrr.append(mean_rec_rank(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail))
-            h_at_1.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=1))
-            h_at_3.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=3))
-            h_at_5.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=5))
-            h_at_10.append(hits_at_k(embeddings, ranks_head=ranks_head, ranks_tail=ranks_tail, k=10))
-        batch_sizes = torch.tensor(batch_sizes)
-        data_size = torch.sum(batch_sizes)
-        mr = (torch.tensor(mr) * batch_sizes).sum() / data_size
-        mrr = (torch.tensor(mrr) * batch_sizes).sum() / data_size
-        h_at_1 = (torch.tensor(h_at_1) * batch_sizes).sum() / data_size
-        h_at_3 = (torch.tensor(h_at_3) * batch_sizes).sum() / data_size
-        h_at_5 = (torch.tensor(h_at_5) * batch_sizes).sum() / data_size
-        h_at_10 = (torch.tensor(h_at_10) * batch_sizes).sum() / data_size
+                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
+                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
+            ranks_head.append(batch_ranks_head)
+            ranks_tail.append(batch_ranks_tail)
+        ranks_head, ranks_tail = torch.cat(ranks_head), torch.cat(ranks_tail)
+        mr = mean_rank(ranks_head=ranks_head, ranks_tail=ranks_tail)
+        mrr = mean_rec_rank(ranks_head=ranks_head, ranks_tail=ranks_tail)
+        h_at_1 = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=1)
+        h_at_3 = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=3)
+        h_at_5 = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=5)
+        h_at_10 = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=10)
     return {'mr': mr.item(),
             'mrr': mrr.item(),
             'h@1': h_at_1.item(),
