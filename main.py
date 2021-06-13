@@ -207,18 +207,18 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     if args.model_variant == 'time_box_mlp':
         model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_mlp':
         model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_single_mlp':
         model = BoxTEmpRelationSingleMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     else:
         model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                        weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                        weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
         model = model.load_state_dict(params)
