@@ -137,7 +137,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             loss.backward()
             timer.log('end_backward')
             if args.gradient_clipping > 0:
-                torch.nn.utils.clip_grad_norm_(model.params(), args.gradient_clipping)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.gradient_clipping)
             optimizer.step()
         timer.log('end_epoch')
         loss_progress.append(np.mean(epoch_losses))
@@ -222,12 +222,12 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
         model = model.load_state_dict(params)
-    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_fn = BoxELoss(args)
 
     best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:
-        model = model.load_state_dict(best_params)
+        model.load_state_dict(best_params)
     metrics = test(kg, testloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     return metrics, progress, copy.deepcopy(model.state_dict())
 
