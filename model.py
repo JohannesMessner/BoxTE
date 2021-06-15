@@ -459,20 +459,20 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
         #self.initial_r_head_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim),
                                                 #device=device)  # lower and upper boundaries, therefore 2*embedding_dim
         #self.initial_r_tail_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim), device=device)
-        self.init_r_head_base_points = nn.Embedding(self.lookback, embedding_dim)
-        self.init_r_head_widths = nn.Embedding(self.lookback, embedding_dim)
-        self.init_r_head_size_scales = nn.Embedding(self.lookback, 1)
-        self.init_r_tail_base_points = nn.Embedding(self.lookback, embedding_dim)
-        self.init_r_tail_widths = nn.Embedding(self.lookback, embedding_dim)
-        self.init_r_tail_size_scales = nn.Embedding(self.lookback, 1)
+        self.init_r_head_base_points = torch.empty((self.lookback, self.nb_relations, embedding_dim))
+        self.init_r_head_widths = torch.empty((self.lookback, self.nb_relations, embedding_dim))
+        self.init_r_head_size_scales = torch.empty((self.lookback, self.nb_relations, 1))
+        self.init_r_tail_base_points = torch.empty((self.lookback, self.nb_relations, embedding_dim))
+        self.init_r_tail_widths = torch.empty((self.lookback, self.nb_relations, embedding_dim))
+        self.init_r_tail_size_scales = torch.empty((self.lookback, self.nb_relations, 1))
         # self.init_f(self.initial_time_head_boxes.weight, *weight_init_args)
         # self.init_f(self.initial_time_tail_boxes.weight, *weight_init_args)
-        self.init_f(self.init_r_head_base_points.weight, *weight_init_args)
-        self.init_f(self.init_r_head_widths.weight, *weight_init_args)
-        self.init_f(self.init_r_head_size_scales.weight, *weight_init_args)
-        self.init_f(self.init_r_tail_base_points.weight, *weight_init_args)
-        self.init_f(self.init_r_tail_widths.weight, *weight_init_args)
-        self.init_f(self.init_r_tail_size_scales.weight, *weight_init_args)
+        self.init_f(self.init_r_head_base_points, *weight_init_args)
+        self.init_f(self.init_r_head_widths, *weight_init_args)
+        self.init_f(self.init_r_head_size_scales, *weight_init_args)
+        self.init_f(self.init_r_tail_base_points, *weight_init_args)
+        self.init_f(self.init_r_tail_widths, *weight_init_args)
+        self.init_f(self.init_r_tail_size_scales, *weight_init_args)
         mlp_layers = [nn.Linear(4*self.embedding_dim*lookback*len(self.relation_ids), nn_width), nn.ReLU()]  # 4* because of lower/upper and head/tail
         for i in range(nn_depth):
             mlp_layers.append(nn.Linear(nn_width, nn_width))
@@ -504,14 +504,14 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
         e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
         time_idx = tuples[:, 3]
         initial_times = torch.arange(0, self.lookback, device=self.device)
-        init_r_head_bases = self.init_r_head_base_points(initial_times)
-        init_r_tail_bases = self.init_r_tail_base_points(initial_times)
-        init_r_head_widths = nn.functional.normalize(self.init_r_head_widths(initial_times), p=1,
-                                                        dim=1)  # normalize relative widths
-        init_r_tail_widths = nn.functional.normalize(self.init_r_tail_widths(initial_times), p=1, dim=1)
+        init_r_head_bases = self.init_r_head_base_points[initial_times,:,:]
+        init_r_tail_bases = self.init_r_tail_base_points[initial_times,:,:]
+        init_r_head_widths = nn.functional.normalize(self.init_r_head_widths[initial_times], p=1,
+                                                        dim=2)  # normalize relative widths
+        init_r_tail_widths = nn.functional.normalize(self.init_r_tail_widths[initial_times], p=1, dim=2)
         init_r_head_scales = nn.functional.elu(
-            self.init_r_head_size_scales(initial_times)) + 1  # ensure scales > 0
-        init_r_tail_scales = nn.functional.elu(self.init_r_tail_size_scales(initial_times)) + 1
+            self.init_r_head_size_scales[initial_times]) + 1  # ensure scales > 0
+        init_r_tail_scales = nn.functional.elu(self.init_r_tail_size_scales[initial_times]) + 1
         # compute scaled widths
         head_deltas = torch.multiply(init_r_head_widths, init_r_head_scales)
         tail_deltas = torch.multiply(init_r_tail_widths, init_r_tail_scales)
@@ -526,8 +526,8 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
         tail_upper = torch.maximum(tail_corner_1, tail_corner_2)
         tail_lower = torch.minimum(tail_corner_1, tail_corner_2)
         # assemble boxes
-        init_r_head_boxes = torch.stack((head_upper, head_lower), dim=2).flatten(1, 2)
-        init_r_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2).flatten(1, 2)
+        init_r_head_boxes = torch.stack((head_upper, head_lower), dim=2).flatten(2, 3)
+        init_r_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2).flatten(2, 3)
         all_r_head_boxes, all_r_tail_boxes = self.unroll_time(init_r_head_boxes, init_r_tail_boxes)  # shape (timestamp, relation, 2*embedding_dim)
 
         r_head_boxes = all_r_head_boxes[time_idx, rel_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
