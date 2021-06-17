@@ -96,11 +96,14 @@ def parse_args(args):
                         help='Roughly time execution of forward, backward, sampling, and validating.')
     parser.add_argument('--norm_embeddings', dest='norm_embeddings', action='store_true',
                         help='Norm all embeddings using tanh function.')
+    parser.add_argument('--eval_per_timestep', dest='eval_per_timestep', action='store_true',
+                        help='During validation, show metrics for each time step individually.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
+    parser.set_defaults(eval_per_timestep=False)
     args = parser.parse_args(args)
     if args.model_variant in ['relation_mlp', 'relation_single_mlp']:
         args.ignore_time = True
@@ -148,7 +151,12 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
         if i_epoch % args.validation_step == 0 and (i_epoch != 0 or (not args.no_initial_validation)):  # validation step
             logging.info('validation checkpoint reached')
             timer.log('start_validation')
-            metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+            if args.eval_per_timestep:
+                metrics = test_per_timestep(kg, valloader, model, args, device=device,
+                                            corrupt_triples_batch_size=args.metrics_batch_size)
+            else:
+                metrics = test(kg, valloader, model, args, device=device,
+                               corrupt_triples_batch_size=args.metrics_batch_size)
             timer.log('end_validation')
             logging.info('METRICS: {}'.format(metrics))
             validation_progress.append(metrics)
@@ -157,7 +165,10 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
                 best_params = copy.deepcopy(model.state_dict())
     logging.info('final validation')
     timer.log('start_validation')
-    metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+    if args.eval_per_timestep:
+        metrics = test_per_timestep(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
+    else:
+        metrics = test(kg, valloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     timer.log('end_validation')
     logging.info('METRICS: {}'.format(metrics))
     validation_progress.append(metrics)
@@ -165,6 +176,47 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
         best_mrr = metrics['mrr']
         best_params = copy.deepcopy(model.state_dict())
     return best_params, best_mrr, {'loss': loss_progress, 'metrics': validation_progress}
+
+
+def test_per_timestep(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1024):
+    with torch.no_grad():
+        ranks_head, ranks_tail = [], []
+        timestamps = []
+        for i_batch, batch in enumerate(dataloader):
+            batch = torch.stack(batch).to(device).unsqueeze(0)
+            timestamps.append(batch[:, 3, :].squeeze())
+            head_corrupts, head_f = kg.corrupt_tuple(batch, 'h', corrupt_triples_batch_size)
+            tail_corrupts, tail_f = kg.corrupt_tuple(batch, 't', corrupt_triples_batch_size)
+            embeddings = model.forward_positives(batch)
+            batch_ranks_head, batch_ranks_tail = 1, 1
+            for i, c_batch_head in enumerate(head_corrupts):
+                c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
+                head_c_embs = model.forward_negatives(c_batch_head)
+                tail_c_embs = model.forward_negatives(c_batch_tail)
+                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
+                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
+            ranks_head.append(batch_ranks_head)
+            ranks_tail.append(batch_ranks_tail)
+        timestamps = torch.cat(timestamps)
+        ranks_head, ranks_tail = torch.cat(ranks_head), torch.cat(ranks_tail)
+        result_dict = dict()
+        for t in range(model.max_time):
+            ranks_head_t, ranks_tail_t = ranks_head[timestamps == t], ranks_tail[timestamps == t]
+            d = dict()
+            d['mr'] = mean_rank(ranks_head=ranks_head_t, ranks_tail=ranks_tail_t).item()
+            d['mrr'] = mean_rec_rank(ranks_head=ranks_head_t, ranks_tail=ranks_tail_t).item()
+            d['h_at_1'] = hits_at_k(ranks_head=ranks_head_t, ranks_tail=ranks_tail_t, k=1).item()
+            d['h_at_3'] = hits_at_k(ranks_head=ranks_head_t, ranks_tail=ranks_tail_t, k=3).item()
+            d['h_at_5'] = hits_at_k(ranks_head=ranks_head_t, ranks_tail=ranks_tail_t, k=5).item()
+            d['h_at_10'] = hits_at_k(ranks_head=ranks_head_t, ranks_tail=ranks_tail_t, k=10).item()
+            result_dict['time_' + str(t)] = d
+        result_dict['mr'] = mean_rank(ranks_head=ranks_head, ranks_tail=ranks_tail).item()
+        result_dict['mrr'] = mean_rec_rank(ranks_head=ranks_head, ranks_tail=ranks_tail).item()
+        result_dict['h@1'] = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=1).item()
+        result_dict['h@3'] = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=3).item()
+        result_dict['h@5'] = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=5).item()
+        result_dict['h@10'] = hits_at_k(ranks_head=ranks_head, ranks_tail=ranks_tail, k=10).item()
+    return result_dict
 
 
 def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1024):
