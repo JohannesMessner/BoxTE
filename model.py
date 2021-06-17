@@ -310,16 +310,12 @@ class BoxTEmpMLP(BaseBoxE):
         self.lookback = lookback
         self.nn_depth = nn_depth
         self.nn_width = nn_width
-        #self.initial_time_head_boxes = nn.Embedding(self.lookback, 2 * embedding_dim)  # lower and upper boundaries, therefore 2*embedding_dim
-        #self.initial_time_tail_boxes = nn.Embedding(self.lookback, 2 * embedding_dim)
         self.init_time_head_base_points = nn.Embedding(self.lookback, embedding_dim)
         self.init_time_head_widths = nn.Embedding(self.lookback, embedding_dim)
         self.init_time_head_size_scales = nn.Embedding(self.lookback, 1)
         self.init_time_tail_base_points = nn.Embedding(self.lookback, embedding_dim)
         self.init_time_tail_widths = nn.Embedding(self.lookback, embedding_dim)
         self.init_time_tail_size_scales = nn.Embedding(self.lookback, 1)
-        #self.init_f(self.initial_time_head_boxes.weight, *weight_init_args)
-        #self.init_f(self.initial_time_tail_boxes.weight, *weight_init_args)
         self.init_f(self.init_time_head_base_points.weight, *weight_init_args)
         self.init_f(self.init_time_head_widths.weight, *weight_init_args)
         self.init_f(self.init_time_head_size_scales.weight, *weight_init_args)
@@ -335,9 +331,6 @@ class BoxTEmpMLP(BaseBoxE):
         self.to(device)
 
     def unroll_time(self, init_head_boxes, init_tail_boxes):
-        #initial_times = torch.arange(0, self.lookback, device=self.device)
-        #init_head_boxes = self.initial_time_head_boxes(initial_times)
-        #init_tail_boxes = self.initial_time_tail_boxes(initial_times)
         current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
         time_head_boxes, time_tail_boxes = [], []
         for t in range(self.max_time):
@@ -456,17 +449,12 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback,
                          device, weight_init_args, norm_embeddings=False)
         self.nb_relations = len(self.relation_ids)
-        #self.initial_r_head_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim),
-                                                #device=device)  # lower and upper boundaries, therefore 2*embedding_dim
-        #self.initial_r_tail_boxes = torch.empty((self.lookback, len(relation_ids), 2 * embedding_dim), device=device)
         self.init_r_head_base_points = torch.empty((self.lookback, self.nb_relations, embedding_dim))
         self.init_r_head_widths = torch.empty((self.lookback, self.nb_relations, embedding_dim))
         self.init_r_head_size_scales = torch.empty((self.lookback, self.nb_relations, 1))
         self.init_r_tail_base_points = torch.empty((self.lookback, self.nb_relations, embedding_dim))
         self.init_r_tail_widths = torch.empty((self.lookback, self.nb_relations, embedding_dim))
         self.init_r_tail_size_scales = torch.empty((self.lookback, self.nb_relations, 1))
-        # self.init_f(self.initial_time_head_boxes.weight, *weight_init_args)
-        # self.init_f(self.initial_time_tail_boxes.weight, *weight_init_args)
         self.init_f(self.init_r_head_base_points, *weight_init_args)
         self.init_f(self.init_r_head_widths, *weight_init_args)
         self.init_f(self.init_r_head_size_scales, *weight_init_args)
@@ -482,9 +470,6 @@ class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
         self.to(device)
 
     def unroll_time(self, init_head_boxes, init_tail_boxes):
-        #initial_times = torch.arange(0, self.lookback, device=self.device)
-        #init_head_boxes = self.initial_r_head_boxes[initial_times].to(self.device)
-        #init_tail_boxes = self.initial_r_tail_boxes[initial_times].to(self.device)
         init_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
         current_state = init_state
         time_head_boxes, time_tail_boxes = [], []
