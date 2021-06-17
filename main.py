@@ -137,7 +137,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             loss.backward()
             timer.log('end_backward')
             if args.gradient_clipping > 0:
-                torch.nn.utils.clip_grad_norm_(model.params(), args.gradient_clipping)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.gradient_clipping)
             optimizer.step()
         timer.log('end_epoch')
         loss_progress.append(np.mean(epoch_losses))
@@ -207,27 +207,27 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     if args.model_variant == 'time_box_mlp':
         model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_mlp':
         model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_single_mlp':
         model = BoxTEmpRelationSingleMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     else:
         model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                        weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings).to(device)
+                        weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
         model = model.load_state_dict(params)
-    optimizer = torch.optim.Adam(model.params(), lr=args.learning_rate)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_fn = BoxELoss(args)
 
     best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:
-        model = model.load_state_dict(best_params)
+        model.load_state_dict(best_params)
     metrics = test(kg, testloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
     return metrics, progress, copy.deepcopy(model.state_dict())
 
