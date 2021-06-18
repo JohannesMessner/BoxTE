@@ -52,6 +52,11 @@ class BaseBoxE(nn.Module):
         self.init_f(self.entity_bases.weight, *weight_init_args)
         self.init_f(self.entity_bumps.weight, *weight_init_args)
 
+    def to(self, device):
+        super().to(device)
+        self.device = device
+        return self
+
     def get_r_idx_by_id(self, r_ids):
         """@:param r_names tensor of realtion ids"""
         return r_ids - self.relation_id_offset
