@@ -4,7 +4,7 @@ import logging
 import os
 from main import test, parse_args
 from data_utils import TempKgLoader
-from model import BoxTEmp, BoxTEmpMLP
+from model import TempBoxE_S, TempBoxE_SMLP
 import pprint
 import time
 
@@ -38,12 +38,12 @@ def test_model():
                       device=device, entity_subset=args.entity_subset)
     loader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
     if args.extrapolate:
-        model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args).to(device)
+        model = TempBoxE_SMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=args.weight_init_args).to(device)
     else:
-        model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                        weight_init=args.weight_init, weight_init_args=args.weight_init_args).to(device)
+        model = TempBoxE_S(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init=args.weight_init, weight_init_args=args.weight_init_args).to(device)
     params = torch.load(args.load_params_path, map_location=device)
     model = model.load_state_dict(params)
 

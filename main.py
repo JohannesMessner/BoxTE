@@ -12,10 +12,10 @@ from metrics import mean_rank
 from metrics import mean_rec_rank
 from metrics import hits_at_k
 from metrics import rank
-from model import BoxTEmp
-from model import BoxTEmpMLP
-from model import BoxTEmpRelationMLP
-from model import BoxTEmpRelationSingleMLP
+from model import TempBoxE_S
+from model import TempBoxE_SMLP
+from model import TempBoxE_RMLP_mulit
+from model import TempBoxE_RMLP
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
 
@@ -257,20 +257,20 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
     if args.model_variant == 'time_box_mlp':
-        model = BoxTEmpMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+        model = TempBoxE_SMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_mlp':
-        model = BoxTEmpRelationMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+        model = TempBoxE_RMLP_mulit(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                                    args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                                    weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_single_mlp':
-        model = BoxTEmpRelationSingleMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                           args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+        model = TempBoxE_RMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     else:
-        model = BoxTEmp(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                        weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+        model = TempBoxE_S(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
         model = model.load_state_dict(params)

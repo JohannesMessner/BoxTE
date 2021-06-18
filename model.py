@@ -250,7 +250,7 @@ class NaiveBaseBoxE():
         return positive_emb, negative_emb
 
 
-class BoxTEmp(BaseBoxE):
+class TempBoxE_S(BaseBoxE):
     """
     BoxE model extended with boxes for timestamps.
     Can do interpolation completion on TKGs.
@@ -299,7 +299,7 @@ class BoxTEmp(BaseBoxE):
         return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
-class BoxTEmpMLP(BaseBoxE):
+class TempBoxE_SMLP(BaseBoxE):
     """
     Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
     Enables extrapolation on TKGs.
@@ -375,7 +375,7 @@ class BoxTEmpMLP(BaseBoxE):
         return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
-class BoxTEmpRelationMLP(BaseBoxE):
+class TempBoxE_RMLP_mulit(BaseBoxE):
     """
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
@@ -439,7 +439,7 @@ class BoxTEmpRelationMLP(BaseBoxE):
         return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
 
 
-class BoxTEmpRelationSingleMLP(BoxTEmpRelationMLP):
+class TempBoxE_RMLP(TempBoxE_RMLP_mulit):
     """
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
