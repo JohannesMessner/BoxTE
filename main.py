@@ -14,8 +14,9 @@ from metrics import hits_at_k
 from metrics import rank
 from model import TempBoxE_S
 from model import TempBoxE_SMLP
-from model import TempBoxE_RMLP_mulit
+from model import TempBoxE_RMLP_multi
 from model import TempBoxE_RMLP
+from model import TempBoxE_R
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
 
@@ -85,7 +86,7 @@ def parse_args(args):
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
-                        help="Choose a model variant from [base, time_box_mlp, relation_mlp, relation_single_mlp].")
+                        help="Choose a model variant from [base, time_box_mlp, relation_mlp, relation_single_mlp, TempBoxE_R].")
     parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
                         help='Ignores time information present in the data and performs standard BoxE.')
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
@@ -105,7 +106,7 @@ def parse_args(args):
     parser.set_defaults(no_initial_validation=False)
     parser.set_defaults(eval_per_timestep=False)
     args = parser.parse_args(args)
-    if args.model_variant in ['relation_mlp', 'relation_single_mlp']:
+    if args.model_variant in ['relation_mlp', 'relation_single_mlp', 'TempBoxE_R']:
         args.ignore_time = True
     return args
 
@@ -261,13 +262,17 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_mlp':
-        model = TempBoxE_RMLP_mulit(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+        model = TempBoxE_RMLP_multi(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                     args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                                     weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant == 'relation_single_mlp':
         model = TempBoxE_RMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant == 'TempBoxE_R':
+        model = TempBoxE_R(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
+                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                              device=device).to(device)
     else:
         model = TempBoxE_S(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)

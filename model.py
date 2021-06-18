@@ -304,6 +304,65 @@ class TempBoxE_S(BaseBoxE):
         return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
+class TempBoxE_R(BaseBoxE):
+    """
+    BoxE model extended with boxes for timestamps.
+    Can do interpolation completion on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+        self.r_head_base_points = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.r_head_widths = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.r_head_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
+        self.r_tail_base_points = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.r_tail_widths = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.r_tail_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
+        self.init_f(self.r_head_base_points, *weight_init_args)
+        self.init_f(self.r_head_widths, *weight_init_args)
+        self.init_f(self.r_head_size_scales, *weight_init_args)
+        self.init_f(self.r_tail_base_points, *weight_init_args)
+        self.init_f(self.r_tail_widths, *weight_init_args)
+        self.init_f(self.r_tail_size_scales, *weight_init_args)
+
+    def compute_embeddings(self, tuples):
+        nb_examples, _, batch_size = tuples.shape
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        time_idx = tuples[:, 3]
+        r_head_bases = self.r_head_base_points[time_idx, rel_idx, :]  # shape (nb_examples, batch_size, embedding_dim)
+        r_tail_bases = self.r_tail_base_points[time_idx, rel_idx, :]
+        r_head_widths = nn.functional.normalize(self.r_head_widths[time_idx, rel_idx, :], p=1, dim=2)  # normalize relative widths
+        r_tail_widths = nn.functional.normalize(self.r_tail_widths[time_idx, rel_idx, :], p=1, dim=2)
+        r_head_scales = nn.functional.elu(self.r_head_size_scales[time_idx, rel_idx, :]) + 1  # ensure scales > 0
+        r_tail_scales = nn.functional.elu(self.r_tail_size_scales[time_idx, rel_idx, :]) + 1
+        # compute scaled widths
+        head_deltas = torch.multiply(r_head_widths, r_head_scales)
+        tail_deltas = torch.multiply(r_tail_widths, r_tail_scales)
+        # compute corners from base and width
+        head_corner_1 = r_head_bases + head_deltas
+        head_corner_2 = r_head_bases - head_deltas
+        tail_corner_1 = r_tail_bases + tail_deltas
+        tail_corner_2 = r_tail_bases - tail_deltas
+        # determine upper and lower corners
+        head_upper = torch.maximum(head_corner_1, head_corner_2)  # shape (nb_examples, batch_size, embedding_dim)
+        head_lower = torch.minimum(head_corner_1, head_corner_2)
+        tail_upper = torch.maximum(tail_corner_1, tail_corner_2)
+        tail_lower = torch.minimum(tail_corner_1, tail_corner_2)
+        # assemble boxes
+        r_head_boxes = torch.stack((head_upper, head_lower), dim=2)  # shape (nb_examples,
+        r_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2)
+        # entity embeddings
+        head_bases = self.entity_bases(e_h_idx)
+        head_bumps = self.entity_bumps(e_h_idx)
+        tail_bases = self.entity_bases(e_t_idx)
+        tail_bumps = self.entity_bumps(e_t_idx)
+        # stack everything
+        entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(
+            relation_embs)  # return dummy for time boxes
+
+
 class TempBoxE_SMLP(BaseBoxE):
     """
     Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
@@ -380,7 +439,7 @@ class TempBoxE_SMLP(BaseBoxE):
         return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
-class TempBoxE_RMLP_mulit(BaseBoxE):
+class TempBoxE_RMLP_multi(BaseBoxE):
     """
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
@@ -444,7 +503,7 @@ class TempBoxE_RMLP_mulit(BaseBoxE):
         return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
 
 
-class TempBoxE_RMLP(TempBoxE_RMLP_mulit):
+class TempBoxE_RMLP(TempBoxE_RMLP_multi):
     """
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
