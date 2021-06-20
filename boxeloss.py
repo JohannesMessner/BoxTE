@@ -31,7 +31,6 @@ def dist(entity_emb, boxes):
     lb = boxes[:, :, :, 1, :]  # lower boundaries
     c = (lb + ub) / 2  # centres
     w = ub - lb + 1  # widths
-    print(w)
     k = 0.5 * (w - 1) * (w - (1 / w))
     d = torch.where(torch.logical_and(torch.ge(entity_emb, lb), torch.le(entity_emb, ub)),
                     torch.abs(entity_emb - c) / w,
