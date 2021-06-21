@@ -523,7 +523,7 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback,
-                         device, weight_init_args, norm_embeddings=False)
+                         device, weight_init_args, norm_embeddings)
         self.nb_relations = len(self.relation_ids)
         self.init_r_head_base_points = nn.Parameter(torch.empty((self.lookback, self.nb_relations, embedding_dim)))
         self.init_r_head_widths = nn.Parameter(torch.empty((self.lookback, self.nb_relations, embedding_dim)))
@@ -631,3 +631,37 @@ class TempBoxE_SMLP_Plus(TempBoxE_SMLP):
             current_state = torch.cat((current_state[5*self.embedding_dim:], next_time))  # cut off upper/lower, head/tail and time_emb
         return nn.Embedding.from_pretrained(torch.cat((init_head_boxes, torch.stack(time_head_boxes)))).to(self.device),\
                nn.Embedding.from_pretrained(torch.cat((init_tail_boxes, torch.stack(time_tail_boxes)))).to(self.device)
+
+
+class TempBoxE_RMLP_Plus(TempBoxE_RMLP):
+    """
+    Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
+    Enables extrapolation on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
+                 lookback, device, weight_init_args, norm_embeddings)
+        self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        mlp_layers = [nn.Linear(4*self.embedding_dim*lookback*len(self.relation_ids)+self.embedding_dim, nn_width), nn.ReLU()]  # 4* because of lower/upper, head/tail
+        for i in range(nn_depth):
+            mlp_layers.append(nn.Linear(nn_width, nn_width))
+            mlp_layers.append(nn.ReLU())
+        mlp_layers.append(nn.Linear(nn_width, 4*self.embedding_dim*len(self.relation_ids)))
+        self.time_transition = nn.Sequential(*mlp_layers)
+        self.to(device)
+
+    def unroll_time(self, init_head_boxes, init_tail_boxes):
+        init_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
+        current_state = init_state
+        time_head_boxes, time_tail_boxes = [], []
+        for t in range(self.max_time):
+            time_emb = self.time_embeddings(torch.tensor(t)).squeeze()
+            current_state = torch.cat((time_emb, current_state))
+            next_time = self.time_transition(current_state)
+            time_head_boxes.append(next_time[:self.nb_relations * 2 * self.embedding_dim].view((self.nb_relations, 2*self.embedding_dim)))
+            time_tail_boxes.append(next_time[self.nb_relations * 2 * self.embedding_dim:].view((self.nb_relations, 2*self.embedding_dim)))
+            current_state = torch.cat(
+                (current_state[(self.nb_relations * 4 * self.embedding_dim + self.embedding_dim):], next_time))  # cut off upper/lower and head/
+        return torch.cat((init_head_boxes, torch.stack(time_head_boxes))).to(self.device), \
+               torch.cat((init_tail_boxes, torch.stack(time_tail_boxes))).to(self.device)

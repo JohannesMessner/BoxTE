@@ -17,6 +17,7 @@ from model import TempBoxE_SMLP
 from model import TempBoxE_SMLP_Plus
 from model import TempBoxE_RMLP_multi
 from model import TempBoxE_RMLP
+from model import TempBoxE_RMLP_Plus
 from model import TempBoxE_R
 from model import StaticBoxE
 from boxeloss import BoxELoss
@@ -89,7 +90,7 @@ def parse_args(args):
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
                         help="Choose a model variant from [StaticBoxE, TempBoxE_S, TempBoxE_SMLP, TempBoxE_R,"
-                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus].")
+                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_RMLP_Plus].")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -286,6 +287,11 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
                            weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['TempBoxE_SMLP_Plus', 'SMLP+', 'smlp+']:
         model = TempBoxE_SMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                              device=device).to(device)
+    elif args.model_variant in ['TempBoxE_RMLP_Plus', 'RMLP+', 'rmlp+']:
+        model = TempBoxE_RMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
