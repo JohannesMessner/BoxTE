@@ -255,6 +255,19 @@ class NaiveBaseBoxE():
         return positive_emb, negative_emb
 
 
+class StaticBoxE(BaseBoxE):
+    """
+    BoxE model extended with boxes for timestamps.
+    Can do interpolation completion on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        return entity_embs, relation_embs, None
+
+
 class TempBoxE_S(BaseBoxE):
     """
     BoxE model extended with boxes for timestamps.
@@ -359,8 +372,7 @@ class TempBoxE_R(BaseBoxE):
         tail_bumps = self.entity_bumps(e_t_idx)
         # stack everything
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(
-            relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes
 
 
 class TempBoxE_SMLP(BaseBoxE):
@@ -500,7 +512,7 @@ class TempBoxE_RMLP_multi(BaseBoxE):
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes
 
 
 class TempBoxE_RMLP(TempBoxE_RMLP_multi):
@@ -586,4 +598,4 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes

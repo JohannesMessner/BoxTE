@@ -2,13 +2,13 @@ import torch
 from boxeloss import score
 
 
-def rank(positive_embs, negative_embs, filter_idx, ignore_time=False):
+def rank(positive_embs, negative_embs, filter_idx):
     """
     Ranks embedded facts against provided negative fact embeddings
     :param filter_idx: indicates which of the negative embeddings are actually true and should not be considered
     """
-    scores = score(*positive_embs, ignore_time)
-    counterscores = score(*negative_embs, ignore_time)
+    scores = score(*positive_embs)
+    counterscores = score(*negative_embs)
     return ((scores > counterscores) * filter_idx).sum(dim=0) + 1
 
 

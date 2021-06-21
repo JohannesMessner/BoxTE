@@ -17,6 +17,7 @@ from model import TempBoxE_SMLP
 from model import TempBoxE_RMLP_multi
 from model import TempBoxE_RMLP
 from model import TempBoxE_R
+from model import StaticBoxE
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
 
@@ -86,9 +87,7 @@ def parse_args(args):
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
-                        help="Choose a model variant from [base, time_box_mlp, relation_mlp, relation_single_mlp, TempBoxE_R].")
-    parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
-                        help='Ignores time information present in the data and performs standard BoxE.')
+                        help="Choose a model variant from [StaticBoxE, base, time_box_mlp, relation_mlp, relation_single_mlp, TempBoxE_R].")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -106,8 +105,10 @@ def parse_args(args):
     parser.set_defaults(no_initial_validation=False)
     parser.set_defaults(eval_per_timestep=False)
     args = parser.parse_args(args)
-    if args.model_variant in ['relation_mlp', 'relation_single_mlp', 'TempBoxE_R']:
-        args.ignore_time = True
+    if args.model_variant in ['StaticBoxE']:
+        args.static = True
+    else:
+        args.sta = False
     return args
 
 
@@ -194,8 +195,8 @@ def test_per_timestep(kg, dataloader, model, args, device='cpu', corrupt_triples
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
-                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
+                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch) - 1
+                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch) - 1
             ranks_head.append(batch_ranks_head)
             ranks_tail.append(batch_ranks_tail)
         timestamps = torch.cat(timestamps)
@@ -233,8 +234,8 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
-                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
+                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch) - 1
+                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch) - 1
             ranks_head.append(batch_ranks_head)
             ranks_tail.append(batch_ranks_tail)
         ranks_head, ranks_tail = torch.cat(ranks_head), torch.cat(ranks_tail)
@@ -253,7 +254,8 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
 
 
 def train_test_val(args, device='cpu', saved_params_dir=None):
-    kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device, entity_subset=args.entity_subset)
+    kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device,
+                      entity_subset=args.entity_subset, kg_is_static=args.static)
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
@@ -273,6 +275,10 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
         model = TempBoxE_R(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
+    elif args.model_variant == 'StaticBoxE':
+        model = StaticBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                           device=device).to(device)
     else:
         model = TempBoxE_S(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)

@@ -3,19 +3,19 @@ import logging
 import torch
 import numpy as np
 import numbers
-import sys
 
 
 class TempKgLoader():
     """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
 
-    def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu', entity_subset=-1):
+    def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu', entity_subset=-1, kg_is_static=False):
         """
         @param truncate positive int indicating how many training examples to consider. Negative int uses all examples.
         @param data_format: some datasets (i.e. the temporal ones) are in a format that need special parsing.
           That format can be specified via this string
         """
         self.device = device
+        self.kg_is_static = kg_is_static
         self.train_data_raw = self.parse_dataset(train_path, truncate, no_time_info=no_time_info)
         self.test_data_raw = self.parse_dataset(test_path, truncate, no_time_info=no_time_info)
         self.valid_data_raw = self.parse_dataset(valid_path, truncate, no_time_info=no_time_info)
@@ -37,6 +37,7 @@ class TempKgLoader():
         self.max_time_train = max([time for [_, _, _, time] in self.train_data])
         self.train_fact_set = set(self.train_data)
         self.train_fact_set_no_timestamps = set(self.train_data_no_timestamps)
+        self.fact_set_no_timestamps = set(self.test_data_no_timestamps + self.valid_data_no_timestamps).union(self.train_fact_set_no_timestamps)
         self.fact_set = set(self.test_data + self.valid_data).union(self.train_fact_set)
 
     def subset_data_by_entities(self, nb_entities):
@@ -191,7 +192,7 @@ class TempKgLoader():
         """
         @:param sampling_mode: 'd','dependent' -> time Dependent sampling; 'a','agnostic' -> time Agnostic sampling (see HyTE paper for details)
         """
-        if sampling_mode in ['a', 'agnostic']:
+        if sampling_mode in ['a', 'agnostic'] or self.kg_is_static:
             return (sample[0], sample[1], sample[2]) in self.train_fact_set_no_timestamps
         if sampling_mode in ['d', 'dependent']:
             return (sample[0], sample[1], sample[2], sample[3]) in self.train_fact_set
@@ -246,11 +247,14 @@ class TempKgLoader():
     def compute_filter_idx(self, tuples):
         nb_examples, _, batch_size = tuples.shape
         tuples_t = tuples.transpose(1,2).reshape((nb_examples*batch_size, 4)).cpu().numpy()
-        func = lambda row: tuple([row[i].item() for i in range(4)]) not in self.fact_set
+        if self.kg_is_static:
+            func = lambda row: tuple([row[i].item() for i in range(3)]) not in self.fact_set_no_timestamps
+        else:
+            func = lambda row: tuple([row[i].item() for i in range(4)]) not in self.fact_set
         idx = np.apply_along_axis(func, 1, tuples_t)
         return torch.from_numpy(idx).reshape((nb_examples, batch_size)).to(self.device)
 
-    def corrupt_tuple(self, tuples, head_or_tail, return_batch_size=-1):
+    def corrupt_tuple(self, tuples, head_or_tail, return_batch_size=-1, kg_is_static=False):
         _, _, batch_size = tuples.shape
         max_e_id = len(self.entity_ids) # we assume entity ids to start at 0
         tuples_rep = torch.repeat_interleave(tuples, max_e_id, dim=0)
