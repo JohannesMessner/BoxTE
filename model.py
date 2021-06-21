@@ -599,3 +599,35 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
         return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes
+
+
+class TempBoxE_SMLP_Plus(TempBoxE_SMLP):
+    """
+    Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
+    Enables extrapolation on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
+                 lookback, device, weight_init_args, norm_embeddings)
+        self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        mlp_layers = [nn.Linear(5*self.embedding_dim*lookback, nn_width), nn.ReLU()]  # 5* because of lower/upper, head/tail and time embedding
+        for i in range(nn_depth):
+            mlp_layers.append(nn.Linear(nn_width, nn_width))
+            mlp_layers.append(nn.ReLU())
+        mlp_layers.append(nn.Linear(nn_width, 4*self.embedding_dim))
+        self.time_transition = nn.Sequential(*mlp_layers)
+        self.to(device)
+
+    def unroll_time(self, init_head_boxes, init_tail_boxes):
+        current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
+        time_head_boxes, time_tail_boxes = [], []
+        for t in range(self.max_time):
+            time_emb = self.time_embeddings(torch.tensor(t)).squeeze()
+            current_state = torch.cat((time_emb, current_state))
+            next_time = self.time_transition(current_state)
+            time_head_boxes.append(next_time[:2*self.embedding_dim])
+            time_tail_boxes.append(next_time[2*self.embedding_dim:])
+            current_state = torch.cat((current_state[5*self.embedding_dim:], next_time))  # cut off upper/lower, head/tail and time_emb
+        return nn.Embedding.from_pretrained(torch.cat((init_head_boxes, torch.stack(time_head_boxes)))).to(self.device),\
+               nn.Embedding.from_pretrained(torch.cat((init_tail_boxes, torch.stack(time_tail_boxes)))).to(self.device)
