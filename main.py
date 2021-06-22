@@ -108,7 +108,7 @@ def parse_args(args):
     parser.set_defaults(no_initial_validation=False)
     parser.set_defaults(eval_per_timestep=False)
     args = parser.parse_args(args)
-    if args.model_variant in ['StaticBoxE']:
+    if args.model_variant in ['StaticBoxE', 'static']:
         args.static = True
     else:
         args.static = False
