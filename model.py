@@ -623,7 +623,7 @@ class TempBoxE_SMLP_Plus(TempBoxE_SMLP):
         current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
         time_head_boxes, time_tail_boxes = [], []
         for t in range(self.max_time):
-            time_emb = self.time_embeddings(torch.tensor(t)).squeeze()
+            time_emb = self.time_embeddings(torch.tensor(t, device=self.device)).squeeze()
             current_state = torch.cat((time_emb, current_state))
             next_time = self.time_transition(current_state)
             time_head_boxes.append(next_time[:2*self.embedding_dim])
@@ -656,7 +656,7 @@ class TempBoxE_RMLP_Plus(TempBoxE_RMLP):
         current_state = init_state
         time_head_boxes, time_tail_boxes = [], []
         for t in range(self.max_time):
-            time_emb = self.time_embeddings(torch.tensor(t)).squeeze()
+            time_emb = self.time_embeddings(torch.tensor(t, device=self.device)).squeeze()
             current_state = torch.cat((time_emb, current_state))
             next_time = self.time_transition(current_state)
             time_head_boxes.append(next_time[:self.nb_relations * 2 * self.embedding_dim].view((self.nb_relations, 2*self.embedding_dim)))
