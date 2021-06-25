@@ -27,8 +27,8 @@ def dist(entity_emb, boxes):
      entities are of shape (nb_examples, batch_size, arity, embedding_dim)
     """
 
-    lb = boxes[:, :, :, 0, :]  # lower boundaries
-    ub = boxes[:, :, :, 1, :]  # upper boundaries
+    ub = boxes[:, :, :, 0, :]  # upper boundaries
+    lb = boxes[:, :, :, 1, :]  # lower boundaries
     c = (lb + ub) / 2  # centres
     w = ub - lb + 1  # widths
     k = 0.5 * (w - 1) * (w - (1 / w))
