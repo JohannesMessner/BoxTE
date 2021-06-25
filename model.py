@@ -618,6 +618,7 @@ class TempBoxE_SMLP_Plus(TempBoxE_SMLP):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
                  lookback, device, weight_init_args, norm_embeddings)
         self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        self.init_f(self.time_embeddings.weight, *weight_init_args)
         mlp_layers = [nn.Linear(4*self.embedding_dim*lookback + self.embedding_dim, nn_width), nn.ReLU()]  # 4* because of lower/upper, head/tail
         for i in range(nn_depth):
             mlp_layers.append(nn.Linear(nn_width, nn_width))
@@ -650,6 +651,7 @@ class TempBoxE_RMLP_Plus(TempBoxE_RMLP):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
                  lookback, device, weight_init_args, norm_embeddings)
         self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        self.init_f(self.time_embeddings.weight, *weight_init_args)
         mlp_layers = [nn.Linear(4*self.embedding_dim*lookback*len(self.relation_ids)+self.embedding_dim, nn_width), nn.ReLU()]  # 4* because of lower/upper, head/tail
         for i in range(nn_depth):
             mlp_layers.append(nn.Linear(nn_width, nn_width))
