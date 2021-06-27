@@ -125,8 +125,16 @@ class TempKgLoader():
                 line_split = tuple(line.split('\t'))
                 if no_time_info or len(line_split) == 3:  # add dummy time information
                     h, r, t = line_split
+                    # make entities and relations different from each other
+                    r = '@' + r
+                    h, t = '#' + h, '#' + t
                     line_split = (h, r, t, '0000-00-00')
-                    # data_format = 'ICEWS'
+                else:
+                    h, r, t, time = line_split
+                    # make entities and relations different from each other
+                    r = '@' + r
+                    h, t = '#' + h, '#' + t
+                    line_split = (h, r, t, time)
                 tuples.append(line_split)
         if data_format == 'ICEWS':
             tuples = self.dates_to_days(tuples)
