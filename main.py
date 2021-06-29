@@ -14,9 +14,12 @@ from metrics import hits_at_k
 from metrics import rank
 from model import TempBoxE_S
 from model import TempBoxE_SMLP
+from model import TempBoxE_SMLP_Plus
 from model import TempBoxE_RMLP_multi
 from model import TempBoxE_RMLP
+from model import TempBoxE_RMLP_Plus
 from model import TempBoxE_R
+from model import StaticBoxE
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
 
@@ -86,9 +89,8 @@ def parse_args(args):
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
-                        help="Choose a model variant from [base, time_box_mlp, relation_mlp, relation_single_mlp, TempBoxE_R].")
-    parser.add_argument('--ignore_time', dest='ignore_time', action='store_true',
-                        help='Ignores time information present in the data and performs standard BoxE.')
+                        help="Choose a model variant from [StaticBoxE, TempBoxE_S, TempBoxE_SMLP, TempBoxE_R,"
+                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_RMLP_Plus].")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -106,8 +108,10 @@ def parse_args(args):
     parser.set_defaults(no_initial_validation=False)
     parser.set_defaults(eval_per_timestep=False)
     args = parser.parse_args(args)
-    if args.model_variant in ['relation_mlp', 'relation_single_mlp', 'TempBoxE_R']:
-        args.ignore_time = True
+    if args.model_variant in ['StaticBoxE', 'static']:
+        args.static = True
+    else:
+        args.static = False
     return args
 
 
@@ -194,8 +198,8 @@ def test_per_timestep(kg, dataloader, model, args, device='cpu', corrupt_triples
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
-                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
+                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch) - 1
+                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch) - 1
             ranks_head.append(batch_ranks_head)
             ranks_tail.append(batch_ranks_tail)
         timestamps = torch.cat(timestamps)
@@ -233,8 +237,8 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
                 c_batch_tail, head_f_batch, tail_f_batch = tail_corrupts[i], head_f[i], tail_f[i]
                 head_c_embs = model.forward_negatives(c_batch_head)
                 tail_c_embs = model.forward_negatives(c_batch_tail)
-                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch, args.ignore_time) - 1
-                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch, args.ignore_time) - 1
+                batch_ranks_head += rank(embeddings, head_c_embs, head_f_batch) - 1
+                batch_ranks_tail += rank(embeddings, tail_c_embs, tail_f_batch) - 1
             ranks_head.append(batch_ranks_head)
             ranks_tail.append(batch_ranks_tail)
         ranks_head, ranks_tail = torch.cat(ranks_head), torch.cat(ranks_tail)
@@ -253,29 +257,46 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
 
 
 def train_test_val(args, device='cpu', saved_params_dir=None):
-    kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device, entity_subset=args.entity_subset)
+    kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device,
+                      entity_subset=args.entity_subset, kg_is_static=args.static)
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)
-    if args.model_variant == 'time_box_mlp':
+    if args.model_variant in ['TempBoxE_SMLP', 'SMLP', 'smlp']:
         model = TempBoxE_SMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
-    elif args.model_variant == 'relation_mlp':
+    elif args.model_variant in ['TempBoxE_RMLP_mulit', 'RMLP_multi', 'rmlp_multi']:
         model = TempBoxE_RMLP_multi(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                     args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                                     weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
-    elif args.model_variant == 'relation_single_mlp':
+    elif args.model_variant in ['TempBoxE_RMLP', 'RMLP', 'rmlp']:
         model = TempBoxE_RMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
-    elif args.model_variant == 'TempBoxE_R':
+    elif args.model_variant in ['TempBoxE_R', 'R', 'r']:
         model = TempBoxE_R(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
-    else:
+    elif args.model_variant in ['StaticBoxE', 'static']:
+        model = StaticBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
+                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                           device=device).to(device)
+    elif args.model_variant in ['TempBoxeS', 'S', 's']:
         model = TempBoxE_S(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant in ['TempBoxE_SMLP_Plus', 'SMLP+', 'smlp+']:
+        model = TempBoxE_SMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                              device=device).to(device)
+    elif args.model_variant in ['TempBoxE_RMLP_Plus', 'RMLP+', 'rmlp+']:
+        model = TempBoxE_RMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                              device=device).to(device)
+    else:
+        raise ValueError("Invalid model variant {}. Consult --help for valid model variants.".format(args.model_variant))
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
         model = model.load_state_dict(params)

@@ -52,11 +52,14 @@ class BaseBoxE(nn.Module):
         self.init_f(self.entity_bases.weight, *weight_init_args)
         self.init_f(self.entity_bumps.weight, *weight_init_args)
 
-    def shape_norm(self, t):
+
+    def shape_norm(self, t, dim):
+        # taken from original BoxE implementation (https://github.com/ralphabb/BoxE)
         step1_tensor = torch.abs(t)
         step2_tensor = step1_tensor + (10 ** -8)
         log_norm_tensor = torch.log(step2_tensor)
-        step3_tensor = torch.mean(log_norm_tensor, dim=2, keepdim=True)
+        step3_tensor = torch.mean(log_norm_tensor, dim=dim, keepdim=True)
+
         norm_volume = torch.exp(step3_tensor)
         return t / norm_volume
 
@@ -80,8 +83,10 @@ class BaseBoxE(nn.Module):
         # get relevant embeddings
         r_head_bases = self.r_head_base_points(rel_idx)
         r_tail_bases = self.r_tail_base_points(rel_idx)
-        r_head_widths = self.shape_norm(self.r_head_widths(rel_idx))  # normalize relative widths
-        r_tail_widths = self.shape_norm(self.r_tail_widths(rel_idx))
+
+        r_head_widths = self.shape_norm(self.r_head_widths(rel_idx), dim=2)  # normalize relative widths
+        r_tail_widths = self.shape_norm(self.r_tail_widths(rel_idx), dim=2)
+
         r_head_scales = nn.functional.elu(self.r_head_size_scales(rel_idx)) + 1  # ensure scales > 0
         r_tail_scales = nn.functional.elu(self.r_tail_size_scales(rel_idx)) + 1
         # compute scaled widths
@@ -263,6 +268,19 @@ class NaiveBaseBoxE():
         return positive_emb, negative_emb
 
 
+class StaticBoxE(BaseBoxE):
+    """
+    BoxE model extended with boxes for timestamps.
+    Can do interpolation completion on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        return entity_embs, relation_embs, None
+
+
 class TempBoxE_S(BaseBoxE):
     """
     BoxE model extended with boxes for timestamps.
@@ -289,8 +307,10 @@ class TempBoxE_S(BaseBoxE):
         time_idx = tuples[:, 3]
         time_head_bases = self.time_head_base_points(time_idx)
         time_tail_bases = self.time_tail_base_points(time_idx)
-        time_head_widths = self.shape_norm(self.time_head_widths(time_idx))  # normalize relative widths
-        time_tail_widths = self.shape_norm(self.time_tail_widths(time_idx))
+
+        time_head_widths = self.shape_norm(self.time_head_widths(time_idx), dim=2)  # normalize relative widths
+        time_tail_widths = self.shape_norm(self.time_tail_widths(time_idx), dim=2)
+
         time_head_scales = nn.functional.elu(self.time_head_size_scales(time_idx)) + 1  # ensure scales > 0
         time_tail_scales = nn.functional.elu(self.time_tail_size_scales(time_idx)) + 1
         # compute scaled widths
@@ -340,8 +360,10 @@ class TempBoxE_R(BaseBoxE):
         time_idx = tuples[:, 3]
         r_head_bases = self.r_head_base_points[time_idx, rel_idx, :]  # shape (nb_examples, batch_size, embedding_dim)
         r_tail_bases = self.r_tail_base_points[time_idx, rel_idx, :]
-        r_head_widths = self.shape_norm(self.r_head_widths[time_idx, rel_idx, :])  # normalize relative widths
-        r_tail_widths = self.shape_norm(self.r_tail_widths[time_idx, rel_idx, :])
+
+        r_head_widths = self.shape_norm(self.r_head_widths[time_idx, rel_idx, :], dim=2)  # normalize relative widths
+        r_tail_widths = self.shape_norm(self.r_tail_widths[time_idx, rel_idx, :], dim=2)
+
         r_head_scales = nn.functional.elu(self.r_head_size_scales[time_idx, rel_idx, :]) + 1  # ensure scales > 0
         r_tail_scales = nn.functional.elu(self.r_tail_size_scales[time_idx, rel_idx, :]) + 1
         # compute scaled widths
@@ -367,8 +389,7 @@ class TempBoxE_R(BaseBoxE):
         tail_bumps = self.entity_bumps(e_t_idx)
         # stack everything
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(
-            relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes
 
 
 class TempBoxE_SMLP(BaseBoxE):
@@ -406,7 +427,7 @@ class TempBoxE_SMLP(BaseBoxE):
         current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
         time_head_boxes, time_tail_boxes = [], []
         for t in range(self.max_time):
-            next_time = self.time_transition(current_state)
+            next_time = self.embedding_norm_fn(self.time_transition(current_state))
             time_head_boxes.append(next_time[:2*self.embedding_dim])
             time_tail_boxes.append(next_time[2*self.embedding_dim:])
             current_state = torch.cat((current_state[4*self.embedding_dim:], next_time))  # cut off upper/lower and head/
@@ -420,8 +441,10 @@ class TempBoxE_SMLP(BaseBoxE):
         initial_times = torch.arange(0, self.lookback, device=self.device)
         init_time_head_bases = self.init_time_head_base_points(initial_times)
         init_time_tail_bases = self.init_time_tail_base_points(initial_times)
-        init_time_head_widths = self.shape_norm(self.init_time_head_widths(initial_times))  # normalize relative widths
-        init_time_tail_widths = self.shape_norm(self.init_time_tail_widths(initial_times))
+
+        init_time_head_widths = self.shape_norm(self.init_time_head_widths(initial_times), dim=1)  # normalize relative widths
+        init_time_tail_widths = self.shape_norm(self.init_time_tail_widths(initial_times), dim=1)
+
         init_time_head_scales = nn.functional.elu(self.init_time_head_size_scales(initial_times)) + 1  # ensure scales > 0
         init_time_tail_scales = nn.functional.elu(self.init_time_tail_size_scales(initial_times)) + 1
         # compute scaled widths
@@ -483,7 +506,7 @@ class TempBoxE_RMLP_multi(BaseBoxE):
             current_state = torch.stack((init_h, init_t), dim=1).flatten().to(self.device)
             time_head_boxes, time_tail_boxes = [], []
             for t in range(self.max_time):
-                next_time = self.time_transition[i_r](current_state)
+                next_time = self.embedding_norm_fn(self.time_transition[i_r](current_state))
                 time_head_boxes.append(next_time[:2 * self.embedding_dim])
                 time_tail_boxes.append(next_time[2 * self.embedding_dim:])
                 current_state = torch.cat(
@@ -507,7 +530,7 @@ class TempBoxE_RMLP_multi(BaseBoxE):
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes
 
 
 class TempBoxE_RMLP(TempBoxE_RMLP_multi):
@@ -518,7 +541,7 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback,
-                         device, weight_init_args, norm_embeddings=False)
+                         device, weight_init_args, norm_embeddings)
         self.nb_relations = len(self.relation_ids)
         self.init_r_head_base_points = nn.Parameter(torch.empty((self.lookback, self.nb_relations, embedding_dim)))
         self.init_r_head_widths = nn.Parameter(torch.empty((self.lookback, self.nb_relations, embedding_dim)))
@@ -545,7 +568,7 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         current_state = init_state
         time_head_boxes, time_tail_boxes = [], []
         for t in range(self.max_time):
-            next_time = self.time_transition(current_state)
+            next_time = self.embedding_norm_fn(self.time_transition(current_state))
             time_head_boxes.append(next_time[:self.nb_relations * 2 * self.embedding_dim].view((self.nb_relations, 2*self.embedding_dim)))
             time_tail_boxes.append(next_time[self.nb_relations * 2 * self.embedding_dim:].view((self.nb_relations, 2*self.embedding_dim)))
             current_state = torch.cat(
@@ -562,8 +585,10 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         initial_times = torch.arange(0, self.lookback, device=self.device)
         init_r_head_bases = self.init_r_head_base_points[initial_times,:,:]
         init_r_tail_bases = self.init_r_tail_base_points[initial_times,:,:]
-        init_r_head_widths = self.shape_norm(self.init_r_head_widths[initial_times])  # normalize relative widths
-        init_r_tail_widths = self.shape_norm(self.init_r_tail_widths[initial_times])
+
+        init_r_head_widths = self.shape_norm(self.init_r_head_widths[initial_times], dim=2)  # normalize relative widths
+        init_r_tail_widths = self.shape_norm(self.init_r_tail_widths[initial_times], dim=2)
+
         init_r_head_scales = nn.functional.elu(
             self.init_r_head_size_scales[initial_times]) + 1  # ensure scales > 0
         init_r_tail_scales = nn.functional.elu(self.init_r_tail_size_scales[initial_times]) + 1
@@ -592,4 +617,72 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
         entity_embs, relation_embs = torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2), torch.stack((r_head_boxes, r_tail_boxes), dim=2)
-        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), torch.zeros_like(relation_embs)  # return dummy for time boxes
+        return self.embedding_norm_fn(entity_embs), self.embedding_norm_fn(relation_embs), None  # return no time boxes
+
+
+class TempBoxE_SMLP_Plus(TempBoxE_SMLP):
+    """
+    Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
+    Enables extrapolation on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
+                 lookback, device, weight_init_args, norm_embeddings)
+        self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        self.init_f(self.time_embeddings.weight, *weight_init_args)
+        mlp_layers = [nn.Linear(4*self.embedding_dim*lookback + self.embedding_dim, nn_width), nn.ReLU()]  # 4* because of lower/upper, head/tail
+        for i in range(nn_depth):
+            mlp_layers.append(nn.Linear(nn_width, nn_width))
+            mlp_layers.append(nn.ReLU())
+        mlp_layers.append(nn.Linear(nn_width, 4*self.embedding_dim))
+        self.time_transition = nn.Sequential(*mlp_layers)
+        self.to(device)
+
+    def unroll_time(self, init_head_boxes, init_tail_boxes):
+        current_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
+        time_head_boxes, time_tail_boxes = [], []
+        for t in range(self.max_time):
+            time_emb = self.time_embeddings(torch.tensor(t, device=self.device)).squeeze()
+            current_state = torch.cat((time_emb, current_state))
+            next_time = self.embedding_norm_fn(self.time_transition(current_state))
+            time_head_boxes.append(next_time[:2*self.embedding_dim])
+            time_tail_boxes.append(next_time[2*self.embedding_dim:])
+            current_state = torch.cat((current_state[5*self.embedding_dim:], next_time))  # cut off upper/lower, head/tail and time_emb
+        return nn.Embedding.from_pretrained(torch.cat((init_head_boxes, torch.stack(time_head_boxes)))).to(self.device),\
+               nn.Embedding.from_pretrained(torch.cat((init_tail_boxes, torch.stack(time_tail_boxes)))).to(self.device)
+
+
+class TempBoxE_RMLP_Plus(TempBoxE_RMLP):
+    """
+    Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
+    Enables extrapolation on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+                 lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
+                 lookback, device, weight_init_args, norm_embeddings)
+        self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        self.init_f(self.time_embeddings.weight, *weight_init_args)
+        mlp_layers = [nn.Linear(4*self.embedding_dim*lookback*len(self.relation_ids)+self.embedding_dim, nn_width), nn.ReLU()]  # 4* because of lower/upper, head/tail
+        for i in range(nn_depth):
+            mlp_layers.append(nn.Linear(nn_width, nn_width))
+            mlp_layers.append(nn.ReLU())
+        mlp_layers.append(nn.Linear(nn_width, 4*self.embedding_dim*len(self.relation_ids)))
+        self.time_transition = nn.Sequential(*mlp_layers)
+        self.to(device)
+
+    def unroll_time(self, init_head_boxes, init_tail_boxes):
+        init_state = torch.stack((init_head_boxes, init_tail_boxes), dim=1).flatten().to(self.device)
+        current_state = init_state
+        time_head_boxes, time_tail_boxes = [], []
+        for t in range(self.max_time):
+            time_emb = self.time_embeddings(torch.tensor(t, device=self.device)).squeeze()
+            current_state = torch.cat((time_emb, current_state))
+            next_time = self.embedding_norm_fn(self.time_transition(current_state))
+            time_head_boxes.append(next_time[:self.nb_relations * 2 * self.embedding_dim].view((self.nb_relations, 2*self.embedding_dim)))
+            time_tail_boxes.append(next_time[self.nb_relations * 2 * self.embedding_dim:].view((self.nb_relations, 2*self.embedding_dim)))
+            current_state = torch.cat(
+                (current_state[(self.nb_relations * 4 * self.embedding_dim + self.embedding_dim):], next_time))  # cut off upper/lower and head/
+        return torch.cat((init_head_boxes, torch.stack(time_head_boxes))).to(self.device), \
+               torch.cat((init_tail_boxes, torch.stack(time_tail_boxes))).to(self.device)
