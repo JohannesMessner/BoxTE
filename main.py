@@ -120,7 +120,7 @@ def instantiate_model(args, kg, device):
         model = TempBoxE_SMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
-    elif args.model_variant in ['TempBoxE_RMLP_mulit', 'RMLP_multi', 'rmlp_multi']:
+    elif args.model_variant in ['TempBoxE_RMLP_multi', 'RMLP_multi', 'rmlp_multi']:
         model = TempBoxE_RMLP_multi(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                     args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                                     weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
