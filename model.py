@@ -52,12 +52,14 @@ class BaseBoxE(nn.Module):
         self.init_f(self.entity_bases.weight, *weight_init_args)
         self.init_f(self.entity_bumps.weight, *weight_init_args)
 
+
     def shape_norm(self, t, dim):
         # taken from original BoxE implementation (https://github.com/ralphabb/BoxE)
         step1_tensor = torch.abs(t)
         step2_tensor = step1_tensor + (10 ** -8)
         log_norm_tensor = torch.log(step2_tensor)
         step3_tensor = torch.mean(log_norm_tensor, dim=dim, keepdim=True)
+
         norm_volume = torch.exp(step3_tensor)
         return t / norm_volume
 
@@ -81,8 +83,10 @@ class BaseBoxE(nn.Module):
         # get relevant embeddings
         r_head_bases = self.r_head_base_points(rel_idx)
         r_tail_bases = self.r_tail_base_points(rel_idx)
+
         r_head_widths = self.shape_norm(self.r_head_widths(rel_idx), dim=2)  # normalize relative widths
         r_tail_widths = self.shape_norm(self.r_tail_widths(rel_idx), dim=2)
+
         r_head_scales = nn.functional.elu(self.r_head_size_scales(rel_idx)) + 1  # ensure scales > 0
         r_tail_scales = nn.functional.elu(self.r_tail_size_scales(rel_idx)) + 1
         # compute scaled widths
@@ -303,8 +307,10 @@ class TempBoxE_S(BaseBoxE):
         time_idx = tuples[:, 3]
         time_head_bases = self.time_head_base_points(time_idx)
         time_tail_bases = self.time_tail_base_points(time_idx)
+
         time_head_widths = self.shape_norm(self.time_head_widths(time_idx), dim=2)  # normalize relative widths
         time_tail_widths = self.shape_norm(self.time_tail_widths(time_idx), dim=2)
+
         time_head_scales = nn.functional.elu(self.time_head_size_scales(time_idx)) + 1  # ensure scales > 0
         time_tail_scales = nn.functional.elu(self.time_tail_size_scales(time_idx)) + 1
         # compute scaled widths
@@ -354,8 +360,10 @@ class TempBoxE_R(BaseBoxE):
         time_idx = tuples[:, 3]
         r_head_bases = self.r_head_base_points[time_idx, rel_idx, :]  # shape (nb_examples, batch_size, embedding_dim)
         r_tail_bases = self.r_tail_base_points[time_idx, rel_idx, :]
+
         r_head_widths = self.shape_norm(self.r_head_widths[time_idx, rel_idx, :], dim=2)  # normalize relative widths
         r_tail_widths = self.shape_norm(self.r_tail_widths[time_idx, rel_idx, :], dim=2)
+
         r_head_scales = nn.functional.elu(self.r_head_size_scales[time_idx, rel_idx, :]) + 1  # ensure scales > 0
         r_tail_scales = nn.functional.elu(self.r_tail_size_scales[time_idx, rel_idx, :]) + 1
         # compute scaled widths
@@ -433,8 +441,10 @@ class TempBoxE_SMLP(BaseBoxE):
         initial_times = torch.arange(0, self.lookback, device=self.device)
         init_time_head_bases = self.init_time_head_base_points(initial_times)
         init_time_tail_bases = self.init_time_tail_base_points(initial_times)
+
         init_time_head_widths = self.shape_norm(self.init_time_head_widths(initial_times), dim=1)  # normalize relative widths
         init_time_tail_widths = self.shape_norm(self.init_time_tail_widths(initial_times), dim=1)
+
         init_time_head_scales = nn.functional.elu(self.init_time_head_size_scales(initial_times)) + 1  # ensure scales > 0
         init_time_tail_scales = nn.functional.elu(self.init_time_tail_size_scales(initial_times)) + 1
         # compute scaled widths
@@ -575,8 +585,10 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         initial_times = torch.arange(0, self.lookback, device=self.device)
         init_r_head_bases = self.init_r_head_base_points[initial_times,:,:]
         init_r_tail_bases = self.init_r_tail_base_points[initial_times,:,:]
+
         init_r_head_widths = self.shape_norm(self.init_r_head_widths[initial_times], dim=2)  # normalize relative widths
         init_r_tail_widths = self.shape_norm(self.init_r_tail_widths[initial_times], dim=2)
+
         init_r_head_scales = nn.functional.elu(
             self.init_r_head_size_scales[initial_times]) + 1  # ensure scales > 0
         init_r_tail_scales = nn.functional.elu(self.init_r_tail_size_scales[initial_times]) + 1
