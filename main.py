@@ -304,7 +304,7 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     model = instantiate_model(args, kg, device)
     if args.load_params_path:
         params = torch.load(args.load_params_path, map_location=device)
-        model = model.load_state_dict(params)
+        model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_fn = BoxELoss(args)
 

@@ -160,23 +160,25 @@ class TempKgLoader():
         return [(h, r, t, d - offset) for (h, r, t, d) in data_days]
 
     def get_entity_names(self):
-        # unsorted list of entity names
-        train_head_names = set([h for (h, _, _, _) in self.train_data_raw])
-        other_names = []
-        other_names.append(set([t for (_, _, t, _) in self.train_data_raw]))
-        other_names.append(set([h for (h, _, _, _) in self.test_data_raw]))
-        other_names.append(set([t for (_, _, t, _) in self.test_data_raw]))
-        other_names.append(set([h for (h, _, _, _) in self.valid_data_raw]))
-        other_names.append(set([t for (_, _, t, _) in self.valid_data_raw]))
-        return list(train_head_names.union(*other_names))
+        # list of entity names
+        name_lists = []
+        name_lists.append([h for (h, _, _, _) in self.train_data_raw])
+        name_lists.append([t for (_, _, t, _) in self.train_data_raw])
+        name_lists.append([h for (h, _, _, _) in self.test_data_raw])
+        name_lists.append([t for (_, _, t, _) in self.test_data_raw])
+        name_lists.append([h for (h, _, _, _) in self.valid_data_raw])
+        name_lists.append([t for (_, _, t, _) in self.valid_data_raw])
+        flat_names_list = [item for sublist in name_lists for item in sublist]  # from Alex Martelli on stackoverflow https://stackoverflow.com/a/952952
+        return list(dict.fromkeys(flat_names_list))  # remove duplicates, requires python >= 3.7 to maintain ordering
 
     def get_relation_names(self):
-        # unsorted list of relation names
-        r_train = set([r for (_, r, _, _) in self.train_data_raw])
-        other_rs = []
-        other_rs.append(set([r for (_, r, _, _) in self.test_data_raw]))
-        other_rs.append(set([r for (_, r, _, _) in self.valid_data_raw]))
-        return list(r_train.union(*other_rs))
+        # list of relation names
+        name_lists = []
+        name_lists.append([r for (_, r, _, _) in self.train_data_raw])
+        name_lists.append([r for (_, r, _, _) in self.test_data_raw])
+        name_lists.append([r for (_, r, _, _) in self.valid_data_raw])
+        flat_names_list = [item for sublist in name_lists for item in sublist]  # from Alex Martelli on stackoverflow https://stackoverflow.com/a/952952
+        return list(dict.fromkeys(flat_names_list))  # remove duplicates, requires python >= 3.7 to maintain ordering
 
     def get_timestamps(self):
         return [time for (_, _, _, time) in self.train_data] + [time for (_, _, _, time) in self.test_data] + [time for
