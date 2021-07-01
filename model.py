@@ -686,3 +686,55 @@ class TempBoxE_RMLP_Plus(TempBoxE_RMLP):
                 (current_state[(self.nb_relations * 4 * self.embedding_dim + self.embedding_dim):], next_time))  # cut off upper/lower and head/
         return torch.cat((init_head_boxes, torch.stack(time_head_boxes))).to(self.device), \
                torch.cat((init_tail_boxes, torch.stack(time_tail_boxes))).to(self.device)
+
+
+class TempBoxE_M(BaseBoxE):
+    """
+    Generalization of TempBoxE^S that employes multiples time boxes, where #timeboxes == #relations
+    Can do interpolation completion on TKGs.
+    """
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+        self.time_head_base_points = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.time_head_widths = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.time_head_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
+        self.time_tail_base_points = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.time_tail_widths = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
+        self.time_tail_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
+        self.init_f(self.time_head_base_points, *weight_init_args)
+        self.init_f(self.time_head_widths, *weight_init_args)
+        self.init_f(self.time_head_size_scales, *weight_init_args)
+        self.init_f(self.time_tail_base_points, *weight_init_args)
+        self.init_f(self.time_tail_widths, *weight_init_args)
+        self.init_f(self.time_tail_size_scales, *weight_init_args)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        nb_examples, _, batch_size = tuples.shape
+        rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
+        time_idx = tuples[:, 3]
+        time_head_bases = self.time_head_base_points[time_idx, rel_idx, :]
+        time_tail_bases = self.time_tail_base_points[time_idx, rel_idx, :]
+
+        time_head_widths = self.shape_norm(self.time_head_widths[time_idx, rel_idx, :], dim=2)  # normalize relative widths
+        time_tail_widths = self.shape_norm(self.time_tail_widths[time_idx, rel_idx, :], dim=2)
+
+        time_head_scales = nn.functional.elu(self.time_head_size_scales[time_idx, rel_idx, :]) + 1  # ensure scales > 0
+        time_tail_scales = nn.functional.elu(self.time_tail_size_scales[time_idx, rel_idx, :]) + 1
+        # compute scaled widths
+        head_deltas = torch.multiply(time_head_widths, time_head_scales)
+        tail_deltas = torch.multiply(time_tail_widths, time_tail_scales)
+        # compute corners from base and width
+        head_corner_1 = time_head_bases + head_deltas
+        head_corner_2 = time_head_bases - head_deltas
+        tail_corner_1 = time_tail_bases + tail_deltas
+        tail_corner_2 = time_tail_bases - tail_deltas
+        # determine upper and lower corners
+        head_upper = torch.maximum(head_corner_1, head_corner_2)
+        head_lower = torch.minimum(head_corner_1, head_corner_2)
+        tail_upper = torch.maximum(tail_corner_1, tail_corner_2)
+        tail_lower = torch.minimum(tail_corner_1, tail_corner_2)
+        # assemble boxes
+        time_head_boxes = torch.stack((head_upper, head_lower), dim=2)
+        time_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2)
+        return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))

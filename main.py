@@ -8,17 +8,10 @@ import pprint
 import time
 from datetime import datetime
 import timing
-from metrics import mean_rank
-from metrics import mean_rec_rank
-from metrics import hits_at_k
-from metrics import rank
-from model import TempBoxE_S
-from model import TempBoxE_SMLP
-from model import TempBoxE_SMLP_Plus
-from model import TempBoxE_RMLP_multi
-from model import TempBoxE_RMLP
-from model import TempBoxE_RMLP_Plus
-from model import TempBoxE_R
+from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
+from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus
+from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi
+from model import TempBoxE_M
 from model import StaticBoxE
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
@@ -90,7 +83,7 @@ def parse_args(args):
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
                         help="Choose a model variant from [StaticBoxE, TempBoxE_S, TempBoxE_SMLP, TempBoxE_R,"
-                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_RMLP_Plus].")
+                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_RMLP_Plus, TempBoxE_M].")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -149,6 +142,9 @@ def instantiate_model(args, kg, device):
                               args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
+    elif args.model_variant in ['TempBoxeM', 'M', 'm']:
+        model = TempBoxE_M(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     else:
         raise ValueError("Invalid model variant {}. Consult --help for valid model variants.".format(args.model_variant))
     return model
