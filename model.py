@@ -338,10 +338,10 @@ class TempBoxE_R(BaseBoxE):
         self.r_tail_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
         self.init_f(self.r_head_base_points, *weight_init_args)
         self.init_f(self.r_head_widths, *weight_init_args)
-        self.init_f(self.r_head_size_scales, *weight_init_args)
+        self.init_f(self.r_head_size_scales, -1, 1)
         self.init_f(self.r_tail_base_points, *weight_init_args)
         self.init_f(self.r_tail_widths, *weight_init_args)
-        self.init_f(self.r_tail_size_scales, *weight_init_args)
+        self.init_f(self.r_tail_size_scales, -1, 1)
 
     def compute_embeddings(self, tuples):
         nb_examples, _, batch_size = tuples.shape
@@ -542,10 +542,10 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
         self.init_r_tail_size_scales = nn.Parameter(torch.empty((self.lookback, self.nb_relations, 1)))
         self.init_f(self.init_r_head_base_points, *weight_init_args)
         self.init_f(self.init_r_head_widths, *weight_init_args)
-        self.init_f(self.init_r_head_size_scales, *weight_init_args)
+        self.init_f(self.init_r_head_size_scales, -1, 1)
         self.init_f(self.init_r_tail_base_points, *weight_init_args)
         self.init_f(self.init_r_tail_widths, *weight_init_args)
-        self.init_f(self.init_r_tail_size_scales, *weight_init_args)
+        self.init_f(self.init_r_tail_size_scales, -1, 1)
         mlp_layers = [nn.Linear(4*self.embedding_dim*lookback*len(self.relation_ids), nn_width), nn.ReLU()]  # 4* because of lower/upper and head/tail
         for i in range(nn_depth):
             mlp_layers.append(nn.Linear(nn_width, nn_width))
@@ -694,10 +694,10 @@ class TempBoxE_M(BaseBoxE):
         self.time_tail_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
         self.init_f(self.time_head_base_points, *weight_init_args)
         self.init_f(self.time_head_widths, *weight_init_args)
-        self.init_f(self.time_head_size_scales, *weight_init_args)
+        self.init_f(self.time_head_size_scales, -1, 1)
         self.init_f(self.time_tail_base_points, *weight_init_args)
         self.init_f(self.time_tail_widths, *weight_init_args)
-        self.init_f(self.time_tail_size_scales, *weight_init_args)
+        self.init_f(self.time_tail_size_scales, -1, 1)
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
