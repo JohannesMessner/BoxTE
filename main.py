@@ -64,11 +64,8 @@ def parse_args(args):
                         help="Specify a s.t. gradients will be clipped to (-a,a). Default is no clipping.")
     parser.add_argument('--num_negative_samples', default=10, type=int,
                         help="Number of negative samples per positive (true) triple.")
-    parser.add_argument('--weight_init', default='default', type=str,
-                        help="Type of weight initialization for the model; 'u' -> uniform dist, 'n' -> normal dist,"
-                             "'default' -> default Pytorch initialization.")
-    parser.add_argument('--weight_init_args', default=[0, 0.5], nargs=2, type=float,
-                        help="Parameters to be passed to weight initialization.")
+    parser.add_argument('--weight_init_factor', default=1.0, type=float,
+                        help="Can make uniform parameter initialization narrower or broader.")
     parser.add_argument('--print_loss_step', default=-1, type=int,
                         help="Number of epochs in between printing of current training loss.")
     parser.add_argument('--neg_sampling_type', default='a', type=str,
@@ -109,38 +106,40 @@ def parse_args(args):
 
 
 def instantiate_model(args, kg, device):
+    uniform_init_args = [(-0.5/np.sqrt(args.embedding_dim)) * args.weight_init_factor,
+                         0.5/np.sqrt(args.embedding_dim) * args.weight_init_factor]
     if args.model_variant in ['TempBoxE_SMLP', 'SMLP', 'smlp']:
         model = TempBoxE_SMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+                              nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['TempBoxE_RMLP_multi', 'RMLP_multi', 'rmlp_multi']:
         model = TempBoxE_RMLP_multi(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                                    args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                                    weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+                                    nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                                    weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['TempBoxE_RMLP', 'RMLP', 'rmlp']:
         model = TempBoxE_RMLP(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+                              nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['TempBoxE_R', 'R', 'r']:
-        model = TempBoxE_R(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
-                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+        model = TempBoxE_R(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
     elif args.model_variant in ['StaticBoxE', 'static']:
-        model = StaticBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(), args.weight_init,
-                           weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+        model = StaticBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
                            device=device).to(device)
     elif args.model_variant in ['TempBoxeS', 'S', 's']:
         model = TempBoxE_S(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                           weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+                           weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['TempBoxE_SMLP_Plus', 'SMLP+', 'smlp+']:
         model = TempBoxE_SMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                              nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
     elif args.model_variant in ['TempBoxE_RMLP_Plus', 'RMLP+', 'rmlp+']:
         model = TempBoxE_RMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                              args.weight_init, nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
-                              weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings,
+                              nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
     elif args.model_variant in ['TempBoxeM', 'M', 'm']:
         model = TempBoxE_M(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),

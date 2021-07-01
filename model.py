@@ -5,18 +5,10 @@ import copy
 
 class BaseBoxE(nn.Module):
 
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu',
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False):
         super(BaseBoxE, self).__init__()
-        if weight_init == 'u':
-            self.init_f = torch.nn.init.uniform_
-        elif weight_init == 'n':
-            self.init_f = torch.nn.init.normal_
-        elif weight_init == 'default':
-            self.init_f = lambda x, *args: x  # don't change initialization
-        else:
-            raise ValueError(
-                "Invalid value for argument 'weight_init'. Use 'u' for uniform or 'n' for normal weight initialization.")
+        self.init_f = torch.nn.init.uniform_
         if norm_embeddings:
             self.embedding_norm_fn = nn.Tanh()
         else:
@@ -44,14 +36,13 @@ class BaseBoxE(nn.Module):
         self.entity_bumps = nn.Embedding(self.nb_entities, embedding_dim)
 
         self.init_f(self.r_head_base_points.weight, *weight_init_args)
-        self.init_f(self.r_head_size_scales.weight, *weight_init_args)
+        self.init_f(self.r_head_size_scales.weight, -1, 1)
         self.init_f(self.r_head_widths.weight, *weight_init_args)
         self.init_f(self.r_tail_base_points.weight, *weight_init_args)
-        self.init_f(self.r_tail_size_scales.weight, *weight_init_args)
+        self.init_f(self.r_tail_size_scales.weight, -1, 1)
         self.init_f(self.r_tail_widths.weight, *weight_init_args)
         self.init_f(self.entity_bases.weight, *weight_init_args)
         self.init_f(self.entity_bumps.weight, *weight_init_args)
-
 
     def shape_norm(self, t, dim):
         # taken from original BoxE implementation (https://github.com/ralphabb/BoxE)
@@ -273,8 +264,8 @@ class StaticBoxE(BaseBoxE):
     BoxE model extended with boxes for timestamps.
     Can do interpolation completion on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
@@ -286,8 +277,8 @@ class TempBoxE_S(BaseBoxE):
     BoxE model extended with boxes for timestamps.
     Can do interpolation completion on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
         self.time_head_base_points = nn.Embedding(self.max_time, embedding_dim)
         self.time_head_widths = nn.Embedding(self.max_time, embedding_dim)
         self.time_head_size_scales = nn.Embedding(self.max_time, 1)
@@ -296,10 +287,10 @@ class TempBoxE_S(BaseBoxE):
         self.time_tail_size_scales = nn.Embedding(self.max_time, 1)
         self.init_f(self.time_head_base_points.weight, *weight_init_args)
         self.init_f(self.time_head_widths.weight, *weight_init_args)
-        self.init_f(self.time_head_size_scales.weight, *weight_init_args)
+        self.init_f(self.time_head_size_scales.weight, -1, 1)
         self.init_f(self.time_tail_base_points.weight, *weight_init_args)
         self.init_f(self.time_tail_widths.weight, *weight_init_args)
-        self.init_f(self.time_tail_size_scales.weight, *weight_init_args)
+        self.init_f(self.time_tail_size_scales.weight, -1, 1)
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
@@ -337,8 +328,8 @@ class TempBoxE_R(BaseBoxE):
     BoxE model extended with boxes for timestamps.
     Can do interpolation completion on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
         self.r_head_base_points = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
         self.r_head_widths = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
         self.r_head_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
@@ -397,9 +388,9 @@ class TempBoxE_SMLP(BaseBoxE):
     Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
         self.lookback = lookback
         self.nn_depth = nn_depth
         self.nn_width = nn_width
@@ -411,10 +402,10 @@ class TempBoxE_SMLP(BaseBoxE):
         self.init_time_tail_size_scales = nn.Embedding(self.lookback, 1)
         self.init_f(self.init_time_head_base_points.weight, *weight_init_args)
         self.init_f(self.init_time_head_widths.weight, *weight_init_args)
-        self.init_f(self.init_time_head_size_scales.weight, *weight_init_args)
+        self.init_f(self.init_time_head_size_scales.weight, -1, 1)
         self.init_f(self.init_time_tail_base_points.weight, *weight_init_args)
         self.init_f(self.init_time_tail_widths.weight, *weight_init_args)
-        self.init_f(self.init_time_tail_size_scales.weight, *weight_init_args)
+        self.init_f(self.init_time_tail_size_scales.weight, -1, 1)
         mlp_layers = [nn.Linear(4*self.embedding_dim*lookback, nn_width), nn.ReLU()]  # 4* because of lower/upper and head/tail
         for i in range(nn_depth):
             mlp_layers.append(nn.Linear(nn_width, nn_width))
@@ -474,9 +465,9 @@ class TempBoxE_RMLP_multi(BaseBoxE):
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
         self.lookback = lookback
         self.nn_depth = nn_depth
         self.nn_width = nn_width
@@ -538,9 +529,9 @@ class TempBoxE_RMLP(TempBoxE_RMLP_multi):
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width, lookback,
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, nn_depth, nn_width, lookback,
                          device, weight_init_args, norm_embeddings)
         self.nb_relations = len(self.relation_ids)
         self.init_r_head_base_points = nn.Parameter(torch.empty((self.lookback, self.nb_relations, embedding_dim)))
@@ -625,9 +616,9 @@ class TempBoxE_SMLP_Plus(TempBoxE_SMLP):
     Extension of the base BoxTEmp model, where time boxes are approximated by MLP.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, nn_depth, nn_width,
                  lookback, device, weight_init_args, norm_embeddings)
         self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
         self.init_f(self.time_embeddings.weight, *weight_init_args)
@@ -658,9 +649,9 @@ class TempBoxE_RMLP_Plus(TempBoxE_RMLP):
     Extension of the base BoxE for TKGC, where relation boxes can move as function of time.
     Enables extrapolation on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', nn_depth=3, nn_width=300,
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
                  lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, nn_depth, nn_width,
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, nn_depth, nn_width,
                  lookback, device, weight_init_args, norm_embeddings)
         self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
         self.init_f(self.time_embeddings.weight, *weight_init_args)

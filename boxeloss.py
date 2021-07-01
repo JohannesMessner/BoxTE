@@ -58,7 +58,7 @@ def uniform_loss(positives, negatives, gamma, w):
     eps = torch.finfo(torch.float32).tiny
     s1 = - torch.log(torch.sigmoid(gamma - score(*positives)) + eps)
     s2 = torch.sum(w * torch.log(torch.sigmoid(score(*negatives) - gamma) + eps), dim=0)
-    return torch.mean(s1 - s2)
+    return torch.sum(s1 - s2)
 
 
 def triple_probs(negative_triples, alpha):
