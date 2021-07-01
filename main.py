@@ -143,7 +143,8 @@ def instantiate_model(args, kg, device):
                               device=device).to(device)
     elif args.model_variant in ['TempBoxeM', 'M', 'm']:
         model = TempBoxE_M(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                           weight_init=args.weight_init, weight_init_args=args.weight_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
+                           weight_init_args=uniform_init_args,
+                           norm_embeddings=args.norm_embeddings, device=device).to(device)
     else:
         raise ValueError("Invalid model variant {}. Consult --help for valid model variants.".format(args.model_variant))
     return model

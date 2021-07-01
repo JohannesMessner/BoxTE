@@ -684,8 +684,8 @@ class TempBoxE_M(BaseBoxE):
     Generalization of TempBoxE^S that employes multiples time boxes, where #timeboxes == #relations
     Can do interpolation completion on TKGs.
     """
-    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, weight_init='u', device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
-        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, weight_init, device, weight_init_args, norm_embeddings)
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
         self.time_head_base_points = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
         self.time_head_widths = nn.Parameter(torch.empty((self.max_time, self.nb_relations, self.embedding_dim)))
         self.time_head_size_scales = nn.Parameter(torch.empty((self.max_time, self.nb_relations, 1)))
