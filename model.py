@@ -729,3 +729,66 @@ class TempBoxE_M(BaseBoxE):
         time_head_boxes = torch.stack((head_upper, head_lower), dim=2)
         time_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2)
         return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
+
+
+class DEBoxE_A(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
+                 weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
+        if norm_embeddings:
+            self.embedding_norm_fn_ = nn.Tanh()
+        else:
+            self.embedding_norm_fn_ = nn.Identity()
+        self.time_entity_vectors = nn.Parameter(torch.empty(self.max_time, self.nb_entities, self.embedding_dim))
+        self.init_f(self.time_entity_vectors, *weight_init_args)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        time_idx = tuples[:, 3]
+        head_time_vecs = self.time_entity_vectors[time_idx, e_h_idx, :]
+        tail_time_vecs = self.time_entity_vectors[time_idx, e_t_idx, :]
+        time_vecs = torch.stack((head_time_vecs, tail_time_vecs), dim=2)
+        entity_embs = entity_embs + time_vecs
+        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+
+
+class DEBoxE_B(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine', device='cpu',
+                 weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
+        if norm_embeddings:
+            self.embedding_norm_fn_ = nn.Tanh()
+        else:
+            self.embedding_norm_fn_ = nn.Identity()
+        if activation == 'sine':
+            self.activation_fn = torch.sin
+        if activation == 'sigmoid':
+            self.activation_fn = torch.sigmoid
+        self.time_features_mask = (torch.arange(self.embedding_dim) < (time_proportion * self.embedding_dim))
+        self.time_w = nn.Parameter(torch.empty(self.nb_entities, embedding_dim))
+        self.time_b = nn.Parameter(torch.empty(self.nb_entities, embedding_dim))
+        nn.init.normal_(self.time_w, 0, 0.5)
+        nn.init.normal_(self.time_b, 0, 0.5)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        nb_examples, _, batch_size = tuples.shape
+        time_idx = tuples[:, 3]
+        time_idx = torch.stack([time_idx for _ in range(self.embedding_dim)], dim=2)
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        head_embeddings = entity_embs[:, :, 0, :]
+        tail_embeddings = entity_embs[:, :, 1, :]
+        mask = self.time_features_mask.repeat((nb_examples, batch_size, 1))
+        head_time_features = mask * head_embeddings * self.activation_fn(
+            time_idx * self.time_w[e_h_idx, :] + self.time_b[e_h_idx, :])
+        head_static_features = ~mask * head_embeddings
+        tail_time_features = mask * tail_embeddings * self.activation_fn(
+            time_idx * self.time_w[e_t_idx, :] + self.time_b[e_t_idx, :])
+        tail_static_features = ~mask * tail_embeddings
+        time_features = torch.stack((head_time_features, tail_time_features), dim=2)
+        static_features = torch.stack((head_static_features, tail_static_features), dim=2)
+        entity_embs = time_features + static_features
+        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None

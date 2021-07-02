@@ -11,6 +11,7 @@ import timing
 from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
 from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi
+from model import DEBoxE_A, DEBoxE_B
 from model import TempBoxE_M
 from model import StaticBoxE
 from boxeloss import BoxELoss
@@ -81,6 +82,11 @@ def parse_args(args):
     parser.add_argument('--model_variant', default='base', type=str,
                         help="Choose a model variant from [StaticBoxE, TempBoxE_S, TempBoxE_SMLP, TempBoxE_R,"
                              "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_RMLP_Plus, TempBoxE_M].")
+    parser.add_argument('--de_time_prop', default=0.3, type=float,
+                        help="Proportion of features considered temporal in the model varinat DEBoxE_B")
+    parser.add_argument('--de_activation', default='sine', type=str,
+                        help="Activation function used on temporal features in the model varinat DEBoxE_B."
+                             "Currently 'sine' and 'sigmoid' are supported.")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -145,6 +151,15 @@ def instantiate_model(args, kg, device):
         model = TempBoxE_M(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init_args=uniform_init_args,
                            norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant in ['DEBoxE_A', 'DE_A', 'de_a', 'dea']:
+        model = DEBoxE_A(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init_args=uniform_init_args,
+                           norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant in ['DEBoxE_B', 'DE_B', 'de_b', 'deb']:
+        model = DEBoxE_B(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init_args=uniform_init_args,
+                           norm_embeddings=args.norm_embeddings, device=device, time_proportion=args.de_time_prop,
+                         activation=args.de_activation).to(device)
     else:
         raise ValueError("Invalid model variant {}. Consult --help for valid model variants.".format(args.model_variant))
     return model
