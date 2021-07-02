@@ -766,9 +766,9 @@ class DEBoxE_B(BaseBoxE):
             self.activation_fn = torch.sin
         if activation == 'sigmoid':
             self.activation_fn = torch.sigmoid
-        self.time_features_mask = (torch.arange(self.embedding_dim) < (time_proportion * self.embedding_dim))
-        self.time_w = nn.Parameter(torch.empty(self.nb_entities, embedding_dim))
-        self.time_b = nn.Parameter(torch.empty(self.nb_entities, embedding_dim))
+        self.time_features_mask = (torch.arange(self.embedding_dim, device=self.device) < (time_proportion * self.embedding_dim))
+        self.time_w = nn.Parameter(torch.empty((self.nb_entities, embedding_dim), device=self.device))
+        self.time_b = nn.Parameter(torch.empty((self.nb_entities, embedding_dim), device=self.device))
         nn.init.normal_(self.time_w, 0, 0.5)
         nn.init.normal_(self.time_b, 0, 0.5)
 
