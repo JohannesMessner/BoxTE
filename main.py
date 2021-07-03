@@ -97,12 +97,18 @@ def parse_args(args):
                         help='Norm all embeddings using tanh function.')
     parser.add_argument('--eval_per_timestep', dest='eval_per_timestep', action='store_true',
                         help='During validation, show metrics for each time step individually.')
+    parser.add_argument('--layer_norm', dest='layer_norm', action='store_true',
+                        help='Performs normalization after every mlp layer, if an mlp based model is chosen.')
+    parser.add_argument('--layer_affine', dest='layer_affine', action='store_true',
+                        help='Adds affine parameters to norm layer, if layer_norm is set and and mlp based model is chosen.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
     parser.set_defaults(extrapolate=False)
     parser.set_defaults(no_initial_validation=False)
     parser.set_defaults(eval_per_timestep=False)
+    parser.set_defaults(layer_norm=False)
+    parser.set_defaults(layer_affine=False)
     args = parser.parse_args(args)
     if args.model_variant in ['StaticBoxE', 'static']:
         args.static = True
@@ -146,7 +152,7 @@ def instantiate_model(args, kg, device):
         model = TempBoxE_RMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
-                              device=device).to(device)
+                              device=device, layer_norm=args.layer_norm, layer_affine=args.layer_affine).to(device)
     elif args.model_variant in ['TempBoxeM', 'M', 'm']:
         model = TempBoxE_M(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init_args=uniform_init_args,
