@@ -820,7 +820,7 @@ class TempBoxE_SLSTM_Plus(TempBoxE_SMLP_Plus):
                                         output_dim=4*self.embedding_dim)
         self.to(device)
 
-    def unroll_time(self, init_head_boxes, init_tail_boxes):
+    def unroll_time(self, init_head_boxes, init_tail_boxes):  # arguments just for compatibility with base class
         embs = self.time_embeddings(torch.arange(self.max_time, device=self.device))  # get all time embeddings
         time_boxes_flat = self.time_transition(embs)
         _, num_box_embs = time_boxes_flat.shape
@@ -837,9 +837,37 @@ class TempBoxE_RLSTM_Plus(TempBoxE_RMLP_Plus):
                                            output_dim=4*self.embedding_dim*self.nb_relations)
         self.to(device)
 
-    def unroll_time(self, init_head_boxes, init_tail_boxes):
+    def unroll_time(self, init_head_boxes, init_tail_boxes):  # arguments just for compatibility with base class
         embs = self.time_embeddings(torch.arange(self.max_time, device=self.device))  # get all time embeddings
         relation_boxes_flat = self.time_transition(embs)
         num_timesteps, num_box_embs = relation_boxes_flat.shape
         heads, tails = relation_boxes_flat[:, :int(num_box_embs/2)], relation_boxes_flat[:, int(num_box_embs/2):]
         return heads.view(num_timesteps, self.nb_relations, -1), tails.view(num_timesteps, self.nb_relations, -1)
+
+
+class TempBoxE_MLSTM_Plus(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
+                     lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings)
+        self.time_embeddings = nn.Embedding(self.max_time, embedding_dim)
+        self.init_f(self.time_embeddings.weight, *weight_init_args)
+        self.time_transition = TimeLSTM(hidden_dim=nn_width, embedding_dim=self.embedding_dim,
+                                           output_dim=4*self.embedding_dim*self.nb_relations)
+        self.to(device)
+
+    def unroll_time(self):
+        embs = self.time_embeddings(torch.arange(self.max_time, device=self.device))  # get all time embeddings
+        relation_boxes_flat = self.time_transition(embs)
+        num_timesteps, num_box_embs = relation_boxes_flat.shape
+        heads, tails = relation_boxes_flat[:, :int(num_box_embs/2)], relation_boxes_flat[:, int(num_box_embs/2):]
+        return heads.view(num_timesteps, self.nb_relations, -1), tails.view(num_timesteps, self.nb_relations, -1)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        nb_examples, _, batch_size = tuples.shape
+        rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
+        time_idx = tuples[:, 3]
+        all_r_head_boxes, all_r_tail_boxes = self.unroll_time()  # shape (timestamp, relation, 2*embedding_dim)
+        time_head_boxes = all_r_head_boxes[time_idx, rel_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
+        time_tail_boxes = all_r_tail_boxes[time_idx, rel_idx, :].view((nb_examples, batch_size, 2, self.embedding_dim))
+        return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))

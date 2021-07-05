@@ -12,7 +12,7 @@ from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
 from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi, TempBoxE_RLSTM_Plus
 from model import DEBoxE_A, DEBoxE_B
-from model import TempBoxE_M
+from model import TempBoxE_M, TempBoxE_MLSTM_Plus
 from model import StaticBoxE
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
@@ -159,7 +159,7 @@ def instantiate_model(args, kg, device):
                               nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
                               device=device, layer_norm=args.layer_norm, layer_affine=args.layer_affine).to(device)
-    elif args.model_variant in ['TempBoxE_RLSTM_Plus', 'RSTM+', 'rlstm+']:
+    elif args.model_variant in ['TempBoxE_RLSTM_Plus', 'RLSTM+', 'rlstm+']:
         model = TempBoxE_RLSTM_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
@@ -168,6 +168,11 @@ def instantiate_model(args, kg, device):
         model = TempBoxE_M(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init_args=uniform_init_args,
                            norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant in ['TempBoxE_MLSTM_Plus', 'MLSTM+', 'mlstm+']:
+        model = TempBoxE_MLSTM_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
+                              device=device).to(device)
     elif args.model_variant in ['DEBoxE_A', 'DE_A', 'de_a', 'dea']:
         model = DEBoxE_A(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init_args=uniform_init_args,
