@@ -797,3 +797,32 @@ class DEBoxE_B(BaseBoxE):
         static_features = torch.stack((head_static_features, tail_static_features), dim=2)
         entity_embs = time_features + static_features
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+
+
+class TimeLSTM(nn.Module):
+    def __init__(self, hidden_dim, embedding_dim, output_dim):
+        super(TimeLSTM, self).__init__()
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim)
+        self.linear = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, time_embeddings):
+        max_time, embedding_dim = time_embeddings.shape
+        out, _ = self.lstm(time_embeddings.view(max_time, 1, -1))  # shape (max_time, 1, hidden_dim)
+        return self.linear(out.view(max_time, -1))
+
+
+class TempBoxE_SLSTM_Plus(TempBoxE_SMLP_Plus):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
+                     lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, nn_depth, nn_width,
+                             lookback, device, weight_init_args, norm_embeddings)
+        self.time_transition = TimeLSTM(hidden_dim=nn_width, embedding_dim=self.embedding_dim, output_dim=4*self.embedding_dim)
+        self.to(device)
+
+
+    def unroll_time(self, init_head_boxes, init_tail_boxes):
+        embs = self.time_embeddings(torch.arange(self.max_time))  # get all time embeddings
+        time_boxes_flat = self.time_transition(embs)
+        _, num_box_embs = time_boxes_flat.shape
+        heads, tails = time_boxes_flat[:, :int(num_box_embs/2)], time_boxes_flat[:, int(num_box_embs/2):]
+        return nn.Embedding.from_pretrained(heads), nn.Embedding.from_pretrained(tails)

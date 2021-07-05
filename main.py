@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 import timing
 from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
-from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus
+from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi
 from model import DEBoxE_A, DEBoxE_B
 from model import TempBoxE_M
@@ -81,11 +81,12 @@ def parse_args(args):
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
     parser.add_argument('--model_variant', default='base', type=str,
                         help="Choose a model variant from [StaticBoxE, TempBoxE_S, TempBoxE_SMLP, TempBoxE_R,"
-                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_RMLP_Plus, TempBoxE_M].")
+                             "TempBoxE_RMLP, TempBoxE_RMLP_multi, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus,"
+                             "TempBoxE_RMLP_Plus, TempBoxE_M].")
     parser.add_argument('--de_time_prop', default=0.3, type=float,
                         help="Proportion of features considered temporal in the model varinat DEBoxE_B")
     parser.add_argument('--de_activation', default='sine', type=str,
-                        help="Activation function used on temporal features in the model varinat DEBoxE_B."
+                        help="Activation function used on temporal features in the model variant DEBoxE_B."
                              "Currently 'sine' and 'sigmoid' are supported.")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
@@ -145,6 +146,11 @@ def instantiate_model(args, kg, device):
                            weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['TempBoxE_SMLP_Plus', 'SMLP+', 'smlp+']:
         model = TempBoxE_SMLP_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                              nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
+                              weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
+                              device=device).to(device)
+    elif args.model_variant in ['TempBoxE_SLSTM_Plus', 'SLSTM+', 'slstm+']:
+        model = TempBoxE_SLSTM_Plus(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                               nn_depth=args.nn_depth, nn_width=args.nn_width, lookback=args.lookback,
                               weight_init_args=uniform_init_args, norm_embeddings=args.norm_embeddings,
                               device=device).to(device)
