@@ -819,9 +819,8 @@ class TempBoxE_SLSTM_Plus(TempBoxE_SMLP_Plus):
         self.time_transition = TimeLSTM(hidden_dim=nn_width, embedding_dim=self.embedding_dim, output_dim=4*self.embedding_dim)
         self.to(device)
 
-
     def unroll_time(self, init_head_boxes, init_tail_boxes):
-        embs = self.time_embeddings(torch.arange(self.max_time))  # get all time embeddings
+        embs = self.time_embeddings(torch.arange(self.max_time, device=self.device))  # get all time embeddings
         time_boxes_flat = self.time_transition(embs)
         _, num_box_embs = time_boxes_flat.shape
         heads, tails = time_boxes_flat[:, :int(num_box_embs/2)], time_boxes_flat[:, int(num_box_embs/2):]
