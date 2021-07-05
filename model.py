@@ -816,7 +816,8 @@ class TempBoxE_SLSTM_Plus(TempBoxE_SMLP_Plus):
                      lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, nn_depth, nn_width,
                              lookback, device, weight_init_args, norm_embeddings)
-        self.time_transition = TimeLSTM(hidden_dim=nn_width, embedding_dim=self.embedding_dim, output_dim=4*self.embedding_dim)
+        self.time_transition = TimeLSTM(hidden_dim=nn_width, embedding_dim=self.embedding_dim,
+                                        output_dim=4*self.embedding_dim)
         self.to(device)
 
     def unroll_time(self, init_head_boxes, init_tail_boxes):
@@ -825,3 +826,20 @@ class TempBoxE_SLSTM_Plus(TempBoxE_SMLP_Plus):
         _, num_box_embs = time_boxes_flat.shape
         heads, tails = time_boxes_flat[:, :int(num_box_embs/2)], time_boxes_flat[:, int(num_box_embs/2):]
         return nn.Embedding.from_pretrained(heads), nn.Embedding.from_pretrained(tails)
+
+
+class TempBoxE_RLSTM_Plus(TempBoxE_RMLP_Plus):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, nn_depth=3, nn_width=300,
+                     lookback=1, device='cpu', weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, nn_depth, nn_width,
+                             lookback, device, weight_init_args, norm_embeddings)
+        self.time_transition = TimeLSTM(hidden_dim=nn_width, embedding_dim=self.embedding_dim,
+                                           output_dim=4*self.embedding_dim*self.nb_relations)
+        self.to(device)
+
+    def unroll_time(self, init_head_boxes, init_tail_boxes):
+        embs = self.time_embeddings(torch.arange(self.max_time, device=self.device))  # get all time embeddings
+        relation_boxes_flat = self.time_transition(embs)
+        num_timesteps, num_box_embs = relation_boxes_flat.shape
+        heads, tails = relation_boxes_flat[:, :int(num_box_embs/2)], relation_boxes_flat[:, int(num_box_embs/2):]
+        return heads.view(num_timesteps, self.nb_relations, -1), tails.view(num_timesteps, self.nb_relations, -1)
