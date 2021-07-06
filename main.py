@@ -11,7 +11,7 @@ import timing
 from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
 from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi, TempBoxE_RLSTM_Plus
-from model import DEBoxE_A, DEBoxE_B
+from model import DEBoxE_A, DEBoxE_B, DEBoxE_C
 from model import TempBoxE_M, TempBoxE_MLSTM_Plus
 from model import StaticBoxE
 from boxeloss import BoxELoss
@@ -179,6 +179,11 @@ def instantiate_model(args, kg, device):
                            norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['DEBoxE_B', 'DE_B', 'de_b', 'deb']:
         model = DEBoxE_B(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                           weight_init_args=uniform_init_args,
+                           norm_embeddings=args.norm_embeddings, device=device, time_proportion=args.de_time_prop,
+                         activation=args.de_activation).to(device)
+    elif args.model_variant in ['DEBoxE_C', 'DE_C', 'de_C', 'dec']:
+        model = DEBoxE_C(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                            weight_init_args=uniform_init_args,
                            norm_embeddings=args.norm_embeddings, device=device, time_proportion=args.de_time_prop,
                          activation=args.de_activation).to(device)
