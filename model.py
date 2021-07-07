@@ -843,6 +843,50 @@ class DEBoxE_EntityBump(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
+class DEBoxE_EntityBase(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine', device='cpu',
+                 weight_init_args=(0, 1), norm_embeddings=False):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
+        if norm_embeddings:
+            self.embedding_norm_fn_ = nn.Tanh()
+        else:
+            self.embedding_norm_fn_ = nn.Identity()
+        if activation == 'sine':
+            self.activation_fn = torch.sin
+        if activation == 'sigmoid':
+            self.activation_fn = torch.sigmoid
+        self.time_features_mask = (torch.arange(self.embedding_dim, device=self.device) < (time_proportion * self.embedding_dim))
+        self.time_w = nn.Parameter(torch.empty((self.nb_entities, embedding_dim), device=self.device))
+        self.time_b = nn.Parameter(torch.empty((self.nb_entities, embedding_dim), device=self.device))
+        nn.init.normal_(self.time_w, 0, 0.5)
+        nn.init.normal_(self.time_b, 0, 0.5)
+
+    def compute_embeddings(self, tuples):
+        _, relation_embs = super().compute_embeddings(tuples)
+        nb_examples, _, batch_size = tuples.shape
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        time_idx = tuples[:, 3]
+        time_idx = torch.stack([time_idx for _ in range(self.embedding_dim)], dim=2)
+        # get relevant entity bases and bumps
+        head_bases = self.entity_bases(e_h_idx)
+        head_bumps = self.entity_bumps(e_h_idx)
+        tail_bases = self.entity_bases(e_t_idx)
+        tail_bumps = self.entity_bumps(e_t_idx)
+        # perform DE on bump vectors
+        mask = self.time_features_mask.repeat((nb_examples, batch_size, 1))
+        head_base_time_features = mask * head_bases * self.activation_fn(
+            time_idx * self.time_w[e_h_idx, :] + self.time_b[e_h_idx, :])
+        head_base_static_features = ~mask * head_bases
+        tail_base_time_features = mask * tail_bases * self.activation_fn(
+            time_idx * self.time_w[e_t_idx, :] + self.time_b[e_t_idx, :])
+        tail_base_static_features = ~mask * tail_bases
+        head_bases = head_base_time_features + head_base_static_features
+        tail_bases = tail_base_time_features + tail_base_static_features
+        entity_embs = self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2))
+        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+
+
 class TimeLSTM(nn.Module):
     def __init__(self, hidden_dim, embedding_dim, output_dim):
         super(TimeLSTM, self).__init__()
