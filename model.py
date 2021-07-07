@@ -66,11 +66,9 @@ class BaseBoxE(nn.Module):
     def get_e_idx_by_id(self, e_ids):
         return e_ids
 
-    def compute_embeddings(self, tuples):
+    def compute_relation_embeddings(self, tuples):
         nb_examples, _, batch_size = tuples.shape
-        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
         rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
-        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
         # get relevant embeddings
         r_head_bases = self.r_head_base_points(rel_idx)
         r_tail_bases = self.r_tail_base_points(rel_idx)
@@ -96,13 +94,22 @@ class BaseBoxE(nn.Module):
         # assemble boxes
         r_head_boxes = torch.stack((head_upper, head_lower), dim=2)
         r_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2)
-        # get relevant entity bases and bumps
+        return self.embedding_norm_fn(torch.stack((r_head_boxes, r_tail_boxes), dim=2))
+
+    def compute_entity_embeddings(self, tuples):
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
         head_bases = self.entity_bases(e_h_idx)
         head_bumps = self.entity_bumps(e_h_idx)
         tail_bases = self.entity_bases(e_t_idx)
         tail_bumps = self.entity_bumps(e_t_idx)
-        return self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2)), \
-               self.embedding_norm_fn(torch.stack((r_head_boxes, r_tail_boxes), dim=2))
+        return self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2))
+
+    def compute_embeddings(self, tuples):
+
+        # get relevant entity bases and bumps
+
+        return self.compute_entity_embeddings(tuples), self.compute_relation_embeddings(tuples)
 
     def forward_negatives(self, negatives):
         """
@@ -704,15 +711,15 @@ class TempBoxE_M(BaseBoxE):
         self.init_f(self.time_tail_widths, *weight_init_args)
         self.init_f(self.time_tail_size_scales, -1, 1)
 
-    def compute_embeddings(self, tuples):
-        entity_embs, relation_embs = super().compute_embeddings(tuples)
+    def compute_time_embeddings(self, tuples):
         nb_examples, _, batch_size = tuples.shape
         rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
         time_idx = tuples[:, 3]
         time_head_bases = self.time_head_base_points[time_idx, rel_idx, :]
         time_tail_bases = self.time_tail_base_points[time_idx, rel_idx, :]
 
-        time_head_widths = self.shape_norm(self.time_head_widths[time_idx, rel_idx, :], dim=2)  # normalize relative widths
+        time_head_widths = self.shape_norm(self.time_head_widths[time_idx, rel_idx, :],
+                                           dim=2)  # normalize relative widths
         time_tail_widths = self.shape_norm(self.time_tail_widths[time_idx, rel_idx, :], dim=2)
 
         time_head_scales = nn.functional.elu(self.time_head_size_scales[time_idx, rel_idx, :]) + 1  # ensure scales > 0
@@ -733,7 +740,12 @@ class TempBoxE_M(BaseBoxE):
         # assemble boxes
         time_head_boxes = torch.stack((head_upper, head_lower), dim=2)
         time_tail_boxes = torch.stack((tail_upper, tail_lower), dim=2)
-        return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
+        return self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        time_embs = self.compute_time_embeddings(tuples)
+        return entity_embs, relation_embs, time_embs
 
 
 class DEBoxE_TimeEntEmb(BaseBoxE):
@@ -861,8 +873,7 @@ class DEBoxE_EntityBase(BaseBoxE):
         nn.init.normal_(self.time_w, 0, 0.5)
         nn.init.normal_(self.time_b, 0, 0.5)
 
-    def compute_embeddings(self, tuples):
-        _, relation_embs = super().compute_embeddings(tuples)
+    def compute_entity_embeddings(self, tuples):
         nb_examples, _, batch_size = tuples.shape
         e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
         e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
@@ -883,8 +894,43 @@ class DEBoxE_EntityBase(BaseBoxE):
         tail_base_static_features = ~mask * tail_bases
         head_bases = head_base_time_features + head_base_static_features
         tail_bases = tail_base_time_features + tail_base_static_features
-        entity_embs = self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2))
-        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+        return self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2))
+
+    def compute_embeddings(self, tuples):
+        _, relation_embs = super().compute_embeddings(tuples)
+        entity_embs = self.compute_entity_embeddings(tuples)
+        return entity_embs, self.embedding_norm_fn_(relation_embs), None
+
+
+class TempBoxE_DEM(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine',
+                 device='cpu',
+                 weight_init_args=(0, 1), norm_embeddings=False):
+        super(TempBoxE_DEM, self).__init__(embedding_dim, relation_ids, entity_ids, timestamps, device,
+                                           weight_init_args, norm_embeddings)
+        # delete not needed inherited parameters to minimize memory overhead
+        self.entity_bases, self.entity_bumps = None, None
+
+        self.de_boxe = DEBoxE_EntityBase(embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation, device,
+                                         weight_init_args, norm_embeddings)
+        self.de_boxe.r_head_base_points, self.de_boxe.r_head_widths, self.de_boxe.r_head_size_scales = None, None, None
+        self.de_boxe.r_tail_base_points, self.de_boxe.r_tail_widths, self.de_boxe.r_tail_size_scales = None, None, None
+        self.de_boxe.r_head_base_points, self.de_boxe.r_head_widths, self.de_boxe.r_head_size_scales = None, None, None
+        self.de_boxe.r_tail_base_points, self.de_boxe.r_tail_widths, self.de_boxe.r_tail_size_scales = None, None, None
+
+        self.tempboxe_m = TempBoxE_M(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args,
+                                     norm_embeddings)
+        self.tempboxe_m.entity_bases, self.tempboxe_m.entity_bumps = None, None
+        self.tempboxe_m.r_head_base_points, self.tempboxe_m.r_head_widths, self.tempboxe_m.r_head_size_scales = None, None, None
+        self.tempboxe_m.r_tail_base_points, self.tempboxe_m.r_tail_widths, self.tempboxe_m.r_tail_size_scales = None, None, None
+        self.tempboxe_m.r_head_base_points, self.tempboxe_m.r_head_widths, self.tempboxe_m.r_head_size_scales = None, None, None
+        self.tempboxe_m.r_tail_base_points, self.tempboxe_m.r_tail_widths, self.tempboxe_m.r_tail_size_scales = None, None, None
+
+    def compute_embeddings(self, tuples):
+        relation_embs = super().compute_relation_embeddings(tuples)
+        entity_embs = self.de_boxe.compute_entity_embeddings(tuples)
+        time_box_embs = self.tempboxe_m.compute_time_embeddings(tuples)
+        return entity_embs, relation_embs, time_box_embs
 
 
 class TimeLSTM(nn.Module):
