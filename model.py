@@ -736,7 +736,7 @@ class TempBoxE_M(BaseBoxE):
         return entity_embs, relation_embs, self.embedding_norm_fn(torch.stack((time_head_boxes, time_tail_boxes), dim=2))
 
 
-class DEBoxE_A(BaseBoxE):
+class DEBoxE_TimeEntEmb(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
@@ -759,7 +759,7 @@ class DEBoxE_A(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
-class DEBoxE_B(BaseBoxE):
+class DEBoxE_EntityEmb(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine', device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
@@ -799,7 +799,7 @@ class DEBoxE_B(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
-class DEBoxE_C(BaseBoxE):
+class DEBoxE_EntityBump(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine', device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
