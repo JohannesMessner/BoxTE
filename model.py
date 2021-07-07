@@ -852,7 +852,7 @@ class DEBoxE_EntityBump(BaseBoxE):
         head_bumps = head_bump_time_features + head_bump_static_features
         tail_bumps = tail_bump_time_features + tail_bump_static_features
         entity_embs = self.embedding_norm_fn(torch.stack((head_bases + tail_bumps, tail_bases + head_bumps), dim=2))
-        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+        return entity_embs, self.embedding_norm_fn_(relation_embs), None
 
 
 class DEBoxE_EntityBase(BaseBoxE):
