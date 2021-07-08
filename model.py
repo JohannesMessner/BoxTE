@@ -771,6 +771,39 @@ class DEBoxE_TimeEntEmb(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
+class DEBoxE_TimeBump(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
+                 weight_init_args=(0, 1), norm_embeddings=False, activation='sine', time_weight=0.5):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
+        if norm_embeddings:
+            self.embedding_norm_fn_ = nn.Tanh()
+        else:
+            self.embedding_norm_fn_ = nn.Identity()
+        if activation == 'sine':
+            self.activation_fn = torch.sin
+        if activation == 'sigmoid':
+            self.activation_fn = torch.sigmoid
+        self.time_weight = time_weight
+        self.time_bumps = nn.Embedding(self.nb_entities, self.embedding_dim)
+        self.time_w = nn.Embedding(self.nb_entities, self.embedding_dim)
+        self.time_b = nn.Embedding(self.nb_entities, self.embedding_dim)
+        self.init_f(self.time_bumps.weight, *weight_init_args)
+        self.init_f(self.time_w.weight, *weight_init_args)
+        self.init_f(self.time_b.weight, *weight_init_args)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
+        time_idx = tuples[:, 3]
+        time_idx = torch.stack([time_idx for _ in range(self.embedding_dim)], dim=2)
+        head_time_bumps = self.time_bumps(e_h_idx) * self.activation_fn(self.time_w(e_h_idx)*time_idx + self.time_b(e_h_idx))
+        tail_time_bumps = self.time_bumps(e_t_idx) * self.activation_fn(self.time_w(e_t_idx)*time_idx + self.time_b(e_t_idx))
+        time_vecs = torch.stack((head_time_bumps, tail_time_bumps), dim=2)
+        entity_embs = entity_embs + self.time_weight * time_vecs
+        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+
+
 class DEBoxE_EntityEmb(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine', device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False):
@@ -902,11 +935,11 @@ class DEBoxE_EntityBase(BaseBoxE):
         return entity_embs, self.embedding_norm_fn_(relation_embs), None
 
 
-class TempBoxE_DEM(BaseBoxE):
+class DEBoxE_BaseM(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, time_proportion, activation='sine',
                  device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False):
-        super(TempBoxE_DEM, self).__init__(embedding_dim, relation_ids, entity_ids, timestamps, device,
+        super(DEBoxE_BaseM, self).__init__(embedding_dim, relation_ids, entity_ids, timestamps, device,
                                            weight_init_args, norm_embeddings)
         # delete not needed inherited parameters to minimize memory overhead
         self.entity_bases, self.entity_bumps = None, None

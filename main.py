@@ -11,8 +11,8 @@ import timing
 from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
 from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi, TempBoxE_RLSTM_Plus
-from model import DEBoxE_TimeEntEmb, DEBoxE_EntityEmb, DEBoxE_EntityBump, DEBoxE_EntityBase
-from model import TempBoxE_DEM
+from model import DEBoxE_TimeEntEmb, DEBoxE_EntityEmb, DEBoxE_EntityBump, DEBoxE_EntityBase, DEBoxE_TimeBump
+from model import DEBoxE_BaseM
 from model import TempBoxE_M, TempBoxE_MLSTM_Plus
 from model import StaticBoxE
 from boxeloss import BoxELoss
@@ -70,6 +70,8 @@ def parse_args(args):
                         help="Can make uniform parameter initialization narrower or broader.")
     parser.add_argument('--print_loss_step', default=-1, type=int,
                         help="Number of epochs in between printing of current training loss.")
+    parser.add_argument('--time_weight', default=1, type=int,
+                        help="Weight assigned to temporal bump in DE-TimeBump model variant.")
     parser.add_argument('--neg_sampling_type', default='a', type=str,
                         help="Toggle between time agnostic ('a') and time dependent ('d') negative sampling.")
     parser.add_argument('--nn_depth', default=3, type=int,
@@ -178,6 +180,11 @@ def instantiate_model(args, kg, device):
         model = DEBoxE_TimeEntEmb(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args,
                                   norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant in ['DEBoxE_TimeBump', 'de-timebump']:
+        model = DEBoxE_TimeBump(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                                  weight_init_args=uniform_init_args,
+                                  norm_embeddings=args.norm_embeddings, device=device, activation=args.de_activation,
+                                  time_weight=args.time_weight).to(device)
     elif args.model_variant in ['DEBoxE_EntityEmb', 'de-emb', 'deb']:
         model = DEBoxE_EntityEmb(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                  weight_init_args=uniform_init_args,
@@ -194,10 +201,10 @@ def instantiate_model(args, kg, device):
                                   norm_embeddings=args.norm_embeddings, device=device, time_proportion=args.de_time_prop,
                                   activation=args.de_activation).to(device)
     elif args.model_variant in ['TempBoxE_DEM', 'DEM', 'dem']:
-        model = TempBoxE_DEM(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                                  weight_init_args=uniform_init_args,
-                                  norm_embeddings=args.norm_embeddings, device=device, time_proportion=args.de_time_prop,
-                                  activation=args.de_activation).to(device)
+        model = DEBoxE_BaseM(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                             weight_init_args=uniform_init_args,
+                             norm_embeddings=args.norm_embeddings, device=device, time_proportion=args.de_time_prop,
+                             activation=args.de_activation).to(device)
     else:
         raise ValueError("Invalid model variant {}. Consult --help for valid model variants.".format(args.model_variant))
     return model
