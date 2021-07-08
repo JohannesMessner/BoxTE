@@ -182,7 +182,7 @@ def instantiate_model(args, kg, device):
                                   norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['DEBoxE_OneBumpPerTime', 'de-onebumppertime']:
         model = DEBoxE_OneBumpPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                                  weight_init_args=uniform_init_args,
+                                  weight_init_args=uniform_init_args, time_weight=args.time_weight,
                                   norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['DEBoxE_TimeBump', 'de-timebump']:
         model = DEBoxE_TimeBump(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
