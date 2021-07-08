@@ -70,7 +70,7 @@ def parse_args(args):
                         help="Can make uniform parameter initialization narrower or broader.")
     parser.add_argument('--print_loss_step', default=-1, type=int,
                         help="Number of epochs in between printing of current training loss.")
-    parser.add_argument('--time_weight', default=1, type=int,
+    parser.add_argument('--time_weight', default=1, type=float,
                         help="Weight assigned to temporal bump in DE-TimeBump model variant.")
     parser.add_argument('--neg_sampling_type', default='a', type=str,
                         help="Toggle between time agnostic ('a') and time dependent ('d') negative sampling.")
