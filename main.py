@@ -11,7 +11,7 @@ import timing
 from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
 from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi, TempBoxE_RLSTM_Plus
-from model import DEBoxE_TimeEntEmb, DEBoxE_EntityEmb, DEBoxE_EntityBump, DEBoxE_EntityBase, DEBoxE_TimeBump
+from model import DEBoxE_TimeEntEmb, DEBoxE_EntityEmb, DEBoxE_EntityBump, DEBoxE_EntityBase, DEBoxE_TimeBump, DEBoxE_OneBumpPerTime
 from model import DEBoxE_BaseM
 from model import TempBoxE_M, TempBoxE_MLSTM_Plus
 from model import StaticBoxE
@@ -178,6 +178,10 @@ def instantiate_model(args, kg, device):
                               device=device).to(device)
     elif args.model_variant in ['DEBoxE_TimeEntEmb', 'dea']:
         model = DEBoxE_TimeEntEmb(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                                  weight_init_args=uniform_init_args,
+                                  norm_embeddings=args.norm_embeddings, device=device).to(device)
+    elif args.model_variant in ['DEBoxE_OneBumpPerTime', 'de-onebumppertime']:
+        model = DEBoxE_OneBumpPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args,
                                   norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['DEBoxE_TimeBump', 'de-timebump']:
