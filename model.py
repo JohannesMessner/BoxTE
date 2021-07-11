@@ -792,6 +792,28 @@ class DEBoxE_OneBumpPerTime(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
+class DEBoxE_TwoBumpsPerTime(BaseBoxE):
+    def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
+                 weight_init_args=(0, 1), norm_embeddings=False, time_weight=1):
+        super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
+        if norm_embeddings:
+            self.embedding_norm_fn_ = nn.Tanh()
+        else:
+            self.embedding_norm_fn_ = nn.Identity()
+        self.time_weight = time_weight
+        self.time_entity_vectors = nn.Parameter(torch.empty(self.max_time, 2, self.embedding_dim))
+        self.init_f(self.time_entity_vectors, *weight_init_args)
+
+    def compute_embeddings(self, tuples):
+        entity_embs, relation_embs = super().compute_embeddings(tuples)
+        time_idx = tuples[:, 3]
+        head_time_vecs = self.time_entity_vectors[time_idx, 0, :]
+        tail_time_vecs = self.time_entity_vectors[time_idx, 1, :]
+        time_vecs = torch.stack((head_time_vecs, tail_time_vecs), dim=2)  # apply different bumps to heads/tails
+        entity_embs = entity_embs + self.time_weight * time_vecs
+        return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
+
+
 class DEBoxE_TimeBump(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, activation='sine', time_weight=0.5):
