@@ -106,6 +106,10 @@ def parse_args(args):
                         help='Performs normalization after every mlp layer, if an mlp based model is chosen.')
     parser.add_argument('--layer_affine', dest='layer_affine', action='store_true',
                         help='Adds affine parameters to norm layer, if layer_norm is set and and mlp based model is chosen.')
+    parser.add_argument('--use_r_factor', dest='use_r_factor', action='store_true',
+                        help='For 1bpt model, learn one scalar factor per relation that is multiplied with time bump.')
+    parser.add_argument('--use_e_factor', dest='use_e_factor', action='store_true',
+                        help='For 1bpt model, learn one scalar factor per entity that is multiplied with time bump.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
@@ -114,6 +118,8 @@ def parse_args(args):
     parser.set_defaults(eval_per_timestep=False)
     parser.set_defaults(layer_norm=False)
     parser.set_defaults(layer_affine=False)
+    parser.set_defaults(use_r_factor=False)
+    parser.set_defaults(use_e_factor=False)
     args = parser.parse_args(args)
     if args.model_variant in ['StaticBoxE', 'static']:
         args.static = True
@@ -184,7 +190,8 @@ def instantiate_model(args, kg, device):
     elif args.model_variant in ['DEBoxE_OneBumpPerTime', 'de-onebumppertime', '1bpt']:
         model = DEBoxE_OneBumpPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
-                                  norm_embeddings=args.norm_embeddings, device=device).to(device)
+                                  norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
+                                      use_e_factor=args.use_e_factor, device=device).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
