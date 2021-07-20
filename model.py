@@ -771,39 +771,42 @@ class DEBoxE_TimeEntEmb(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
-class DEBoxE_OneBumpPerTime(BaseBoxE):
+class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
-                 weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False):
+                 weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
+                 nb_timebumps=2):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
         else:
             self.embedding_norm_fn_ = nn.Identity()
         self.use_r_factor, self.use_e_factor = use_r_factor, use_e_factor
+        self.nb_timebumps = nb_timebumps
         self.time_weight = time_weight
-        self.time_entity_vectors = nn.Parameter(torch.empty(self.max_time, self.embedding_dim))
-        self.init_f(self.time_entity_vectors, *weight_init_args)
+        self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
+        self.init_f(self.time_bumps, *weight_init_args)
         if self.use_r_factor:
-            self.r_factor = nn.Parameter(torch.empty(self.nb_relations, 1))
+            self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_factor, 1, 0.1)
         if self.use_e_factor:
-            self.e_factor = nn.Parameter(torch.empty(self.nb_entities, 1))
+            self.e_factor = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.e_factor, 1, 0.1)
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
         time_idx = tuples[:, 3]
-        time_vecs_h = self.time_entity_vectors[time_idx, :]
-        time_vecs_t = self.time_entity_vectors[time_idx, :]
+        time_vecs_h = self.time_bumps[time_idx, :, :]
+        time_vecs_t = self.time_bumps[time_idx, :, :]
         if self.use_r_factor:
             rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
-            time_vecs_h *= self.r_factor[rel_idx]
-            time_vecs_t *= self.r_factor[rel_idx]
+            time_vecs_h *= self.r_factor[rel_idx, :, :]
+            time_vecs_t *= self.r_factor[rel_idx, :, :]
         if self.use_e_factor:
             e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
             e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
-            time_vecs_h *= self.e_factor[e_h_idx]
-            time_vecs_t *= self.e_factor[e_t_idx]
+            time_vecs_h *= self.e_factor[e_h_idx, :, :]
+            time_vecs_t *= self.e_factor[e_t_idx, :, :]
+        time_vecs_h, time_vecs_t = time_vecs_h.sum(dim=2), time_vecs_t.sum(dim=2)  # sum over all time bumps
         time_vecs = torch.stack((time_vecs_h, time_vecs_t), dim=2)  # apply to both heads and tails
         entity_embs = entity_embs + self.time_weight * time_vecs
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None

@@ -12,7 +12,7 @@ from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
 from model import TempBoxE_S, TempBoxE_SMLP, TempBoxE_SMLP_Plus, TempBoxE_SLSTM_Plus
 from model import TempBoxE_R, TempBoxE_RMLP, TempBoxE_RMLP_Plus, TempBoxE_RMLP_multi, TempBoxE_RLSTM_Plus
 from model import DEBoxE_TimeEntEmb, DEBoxE_EntityEmb, DEBoxE_EntityBump, DEBoxE_EntityBase, DEBoxE_TimeBump
-from model import DEBoxE_OneBumpPerTime, DEBoxE_TwoBumpsPerTime
+from model import TempBoxE, DEBoxE_TwoBumpsPerTime
 from model import DEBoxE_BaseM
 from model import TempBoxE_M, TempBoxE_MLSTM_Plus
 from model import StaticBoxE
@@ -92,6 +92,8 @@ def parse_args(args):
     parser.add_argument('--de_activation', default='sine', type=str,
                         help="Activation function used on temporal features in the model variant DEBoxE_B."
                              "Currently 'sine' and 'sigmoid' are supported.")
+    parser.add_argument('--nb_timebumps', default=1, type=int,
+                        help="Number of bumps each time step has.")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -188,10 +190,10 @@ def instantiate_model(args, kg, device):
                                   weight_init_args=uniform_init_args,
                                   norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['DEBoxE_OneBumpPerTime', 'de-onebumppertime', '1bpt']:
-        model = DEBoxE_OneBumpPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                                  weight_init_args=uniform_init_args, time_weight=args.time_weight,
-                                  norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
-                                      use_e_factor=args.use_e_factor, device=device).to(device)
+        model = TempBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                         weight_init_args=uniform_init_args, time_weight=args.time_weight,
+                         norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
+                         use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
