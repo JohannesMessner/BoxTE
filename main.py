@@ -112,6 +112,10 @@ def parse_args(args):
                         help='For 1bpt model, learn one scalar factor per relation that is multiplied with time bump.')
     parser.add_argument('--use_e_factor', dest='use_e_factor', action='store_true',
                         help='For 1bpt model, learn one scalar factor per entity that is multiplied with time bump.')
+    parser.add_argument('--use_r_rotation', dest='use_r_rotation', action='store_true',
+                        help='For 1bpt model, learn one scalar angle per relation that rotates time bump.')
+    parser.add_argument('--use_e_rotation', dest='use_e_rotation', action='store_true',
+                        help='For 1bpt model, learn one scalar angle per entity that rotates time bump.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
@@ -122,6 +126,8 @@ def parse_args(args):
     parser.set_defaults(layer_affine=False)
     parser.set_defaults(use_r_factor=False)
     parser.set_defaults(use_e_factor=False)
+    parser.set_defaults(use_r_rotation=False)
+    parser.set_defaults(use_e_rotation=False)
     args = parser.parse_args(args)
     if args.model_variant in ['StaticBoxE', 'static']:
         args.static = True
@@ -193,7 +199,8 @@ def instantiate_model(args, kg, device):
         model = TempBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                          weight_init_args=uniform_init_args, time_weight=args.time_weight,
                          norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
-                         use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps).to(device)
+                         use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
+                         use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
@@ -255,6 +262,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
                 continue
             epoch_losses.append(loss.item())
             timer.log('start_backward')
+            #print(loss.item())
             loss.backward()
             timer.log('end_backward')
             if args.gradient_clipping > 0:
@@ -423,6 +431,7 @@ def run_loop(saved_params_dir=None):
 
 
 if __name__ == '__main__':
+    #torch.autograd.set_detect_anomaly(True)
     print('Execution started')
     start_time = time.time()
     run_loop()

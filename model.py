@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 import copy
@@ -771,16 +773,49 @@ class DEBoxE_TimeEntEmb(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
+def to_spherical(vecs):
+    squares = vecs ** 2
+    r_squared = squares.sum(dim=1)
+    r = r_squared.sqrt()
+    angles = []
+    k = torch.zeros(len(vecs))
+    for i, x_i in enumerate(vecs.t()):  # iterate over embedding dims
+        if i == len(vecs.t()) - 1:  # last dim has no associated angle
+            continue
+        acos_input = (x_i / (r_squared - k).sqrt())
+        eps = torch.where(acos_input < 0, 0.01, -0.01)
+        angles.append((acos_input + eps).acos())
+        k = k + squares[:, i]
+    angles = torch.stack(angles, dim=1)
+    angles[:, -1] = torch.where(vecs[:, -1] < 0, 2 * math.pi - angles[:, -1], angles[:, -1])
+    return torch.cat((r.view(-1, 1), angles), dim=1)
+
+
+def to_cartesian(vecs):
+    r = vecs[:, 0]
+    angles = vecs[:, 1:]
+    cos_vec = angles.cos()
+    sin_vec = angles.sin()
+    xs = []
+    running_sin = torch.ones(len(vecs))
+    for i_a, a in enumerate(angles.t()):  # iterate over embedding_dim-1
+        xs.append(r * running_sin * cos_vec[:, i_a])
+        running_sin = running_sin * sin_vec[:, i_a].clone()
+    xs.append(r * running_sin)
+    return torch.stack(xs, dim=1)
+
+
 class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
-                 nb_timebumps=2):
+                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
         else:
             self.embedding_norm_fn_ = nn.Identity()
         self.use_r_factor, self.use_e_factor = use_r_factor, use_e_factor
+        self.use_r_rotation, self.use_e_rotation = use_r_rotation, use_e_rotation
         self.nb_timebumps = nb_timebumps
         self.time_weight = time_weight
         self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
@@ -791,19 +826,40 @@ class TempBoxE(BaseBoxE):
         if self.use_e_factor:
             self.e_factor = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.e_factor, 1, 0.1)
+        if self.use_r_rotation:
+            self.r_angles = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+            torch.nn.init.normal_(self.r_angles, 0, 0.1)
+        if self.use_e_rotation:
+            self.e_angles = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
+            torch.nn.init.normal_(self.e_angles, 0, 0.1)
+
+    def apply_rotation(self, vecs, angles):
+        nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape
+        og_shape = (nb_examples, batch_size, nb_timebumps, emb_dim)
+        flat_shape = (nb_examples * batch_size * nb_timebumps, emb_dim)
+        angles = torch.cat([angles for _ in range(emb_dim-1)], dim=-1)
+        vecs_sph = to_spherical(vecs.view(flat_shape))
+        vecs_sph[:, 1:] += angles.view((nb_examples * batch_size * nb_timebumps, emb_dim-1))  # apply angles
+        return to_cartesian(vecs_sph).view(og_shape)
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
         time_idx = tuples[:, 3]
+        rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
+        e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
+        e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
         time_vecs_h = self.time_bumps[time_idx, :, :]
         time_vecs_t = self.time_bumps[time_idx, :, :]
+        if self.use_r_rotation:
+            time_vecs_h = self.apply_rotation(time_vecs_h, self.r_angles[rel_idx, :, :])
+            time_vecs_t = self.apply_rotation(time_vecs_t, self.r_angles[rel_idx, :, :])
+        if self.use_e_rotation:
+            time_vecs_h = self.apply_rotation(time_vecs_h, self.e_angles[e_h_idx, :, :])
+            time_vecs_t = self.apply_rotation(time_vecs_t, self.e_angles[e_t_idx, :, :])
         if self.use_r_factor:
-            rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
             time_vecs_h *= self.r_factor[rel_idx, :, :]
             time_vecs_t *= self.r_factor[rel_idx, :, :]
         if self.use_e_factor:
-            e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
-            e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
             time_vecs_h *= self.e_factor[e_h_idx, :, :]
             time_vecs_t *= self.e_factor[e_t_idx, :, :]
         time_vecs_h, time_vecs_t = time_vecs_h.sum(dim=2), time_vecs_t.sum(dim=2)  # sum over all time bumps
