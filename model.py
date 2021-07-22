@@ -838,9 +838,9 @@ class TempBoxE(BaseBoxE):
         og_shape = (nb_examples, batch_size, nb_timebumps, emb_dim)
         flat_shape = (nb_examples * batch_size * nb_timebumps, emb_dim)
         angles = torch.cat([angles for _ in range(emb_dim-1)], dim=-1)
-        vecs_sph = to_spherical(vecs.view(flat_shape))
+        vecs_sph = to_spherical(vecs.view(flat_shape), device=self.device)
         vecs_sph[:, 1:] += angles.view((nb_examples * batch_size * nb_timebumps, emb_dim-1))  # apply angles
-        return to_cartesian(vecs_sph).view(og_shape)
+        return to_cartesian(vecs_sph, device=self.device).view(og_shape)
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
