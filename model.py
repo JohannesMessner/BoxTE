@@ -773,12 +773,12 @@ class DEBoxE_TimeEntEmb(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
-def to_spherical(vecs):
+def to_spherical(vecs, device):
     squares = vecs ** 2
     r_squared = squares.sum(dim=1)
     r = r_squared.sqrt()
     angles = []
-    k = torch.zeros(len(vecs))
+    k = torch.zeros(len(vecs), device=device)
     for i, x_i in enumerate(vecs.t()):  # iterate over embedding dims
         if i == len(vecs.t()) - 1:  # last dim has no associated angle
             continue
@@ -791,13 +791,13 @@ def to_spherical(vecs):
     return torch.cat((r.view(-1, 1), angles), dim=1)
 
 
-def to_cartesian(vecs):
+def to_cartesian(vecs, device):
     r = vecs[:, 0]
     angles = vecs[:, 1:]
     cos_vec = angles.cos()
     sin_vec = angles.sin()
     xs = []
-    running_sin = torch.ones(len(vecs))
+    running_sin = torch.ones(len(vecs), device=device)
     for i_a, a in enumerate(angles.t()):  # iterate over embedding_dim-1
         xs.append(r * running_sin * cos_vec[:, i_a])
         running_sin = running_sin * sin_vec[:, i_a].clone()
