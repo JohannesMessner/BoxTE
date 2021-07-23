@@ -12,6 +12,9 @@ class BoxELoss():
         elif args.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
             self.loss_fn = adversarial_loss
             self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp}
+        elif args.loss_type in ['cross entropy', 'cross-entropy', 'ce']:
+            self.loss_fn = cross_entropy_loss
+            self.fn_kwargs = dict()
 
     def __call__(self, positive_tuples, negative_tuples):
         return self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
@@ -78,3 +81,7 @@ def adversarial_loss(positive_triple, negative_triples, gamma, alpha):
     """
     triple_weights = triple_probs(negative_triples, alpha)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights)
+
+
+def cross_entropy_loss(positive_triple, negative_triples):
+    return torch.sum(score(*positive_triple).exp() / torch.sum(score(*negative_triples).exp(), dim=0))
