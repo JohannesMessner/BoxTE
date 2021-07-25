@@ -1,0 +1,2 @@
+ICEWS14 TGKC dataset taken from https://github.com/nle-ml/mmkb/tree/master/TemporalKGs/icews14.
+Originally introduced by Garcia-Duran et al in the paper 'Learning Sequence Encoders for Temporal Knowledge Graph Completion' (https://arxiv.org/abs/1709.02314).
