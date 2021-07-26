@@ -810,6 +810,12 @@ def to_cartesian(vecs, device):
     return torch.stack(xs, dim=1)
 
 
+def to_angle_interval(angles):
+    '''maps angles to [0, 2*pi) interval '''
+    angles_by_twopi = angles/(2*math.pi)
+    return (angles_by_twopi - torch.floor(angles_by_twopi)) * 2 * math.pi
+
+
 class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
@@ -842,9 +848,11 @@ class TempBoxE(BaseBoxE):
         nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape
         og_shape = (nb_examples, batch_size, nb_timebumps, emb_dim)
         flat_shape = (nb_examples * batch_size * nb_timebumps, emb_dim)
+        angles = to_angle_interval(angles)
         angles = torch.cat([angles for _ in range(emb_dim-1)], dim=-1)
         vecs_sph = to_spherical(vecs.view(flat_shape), device=self.device)
         vecs_sph[:, 1:] += angles.view((nb_examples * batch_size * nb_timebumps, emb_dim-1))  # apply angles
+        vecs_sph[:, 1:] = to_angle_interval(vecs_sph[:, 1:])
         return to_cartesian(vecs_sph, device=self.device).view(og_shape)
 
     def compute_embeddings(self, tuples):
