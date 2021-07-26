@@ -787,6 +787,11 @@ def to_spherical(vecs, device):
         angles.append((acos_input + eps).acos())
         k = k + squares[:, i]
     angles = torch.stack(angles, dim=1)
+    # in certain cases (see https://en.wikipedia.org/wiki/N-sphere#Spherical_coordinates),
+    # the angles are not well defined, resulting in nan values
+    # we deal with these cases after the fact:
+    angles = torch.where(angles.isfinite(), angles, torch.tensor([0.0]))
+    ####
     angles[:, -1] = torch.where(vecs[:, -1] < 0, 2 * math.pi - angles[:, -1], angles[:, -1])
     return torch.cat((r.view(-1, 1), angles), dim=1)
 
