@@ -774,6 +774,10 @@ class DEBoxE_TimeEntEmb(BaseBoxE):
 
 
 def to_spherical(vecs, device):
+    '''
+    Transforms vectors in cartesian coordinates to spherical coordinates
+    For algorithm description, including special and ambiguous cases, see https://en.wikipedia.org/wiki/N-sphere#Spherical_coordinates
+    '''
     squares = vecs ** 2
     r_squared = squares.sum(dim=1)
     r = r_squared.sqrt()
@@ -782,16 +786,22 @@ def to_spherical(vecs, device):
     for i, x_i in enumerate(vecs.t()):  # iterate over embedding dims
         if i == len(vecs.t()) - 1:  # last dim has no associated angle
             continue
-        acos_input = (x_i / (r_squared - k).sqrt())
-        eps = torch.where(acos_input < 0, 0.01, -0.01)
+        eps_abs = 0.01
+        norm_div = (r_squared - k).sqrt()
+        # catch ambiguous case where divisor is 0
+        norm_div_not_zero = torch.count_nonzero(norm_div.unsqueeze(1).detach(), dim=1).squeeze() > 0.0
+        #norm_div_not_zero = torch.count_nonzero(torch.tensor([2]))#.squeeze()# > 0.0
+        acos_input = torch.where(norm_div_not_zero, (x_i / norm_div), torch.tensor([1.0 + eps_abs], device=device))
+        # catch special case where x_i != 0 and forall x_j, j > i: x_j = 0
+        not_special_case = torch.logical_or((norm_div != x_i), x_i == 0)
+        acos_input = torch.where(not_special_case, acos_input,
+                                 torch.where(x_i >= 0, torch.tensor([1.0 + eps_abs], device=device),
+                                             torch.tensor([-1.0 - eps_abs], device=device)))
+        # sanity epsilon to avoid nan's
+        eps = torch.where(acos_input < 0, eps_abs, -eps_abs)
         angles.append((acos_input + eps).acos())
         k = k + squares[:, i]
     angles = torch.stack(angles, dim=1)
-    # in certain cases (see https://en.wikipedia.org/wiki/N-sphere#Spherical_coordinates),
-    # the angles are not well defined, resulting in nan values
-    # we deal with these cases after the fact:
-    angles = torch.where(angles.isfinite(), angles, torch.tensor([0.0], device=device))
-    ####
     angles[:, -1] = torch.where(vecs[:, -1] < 0, 2 * math.pi - angles[:, -1], angles[:, -1])
     return torch.cat((r.view(-1, 1), angles), dim=1)
 
