@@ -62,7 +62,7 @@ def parse_args(args):
     parser.add_argument('--adversarial_temp', default=1, type=float,
                         help='Alpha parameter for adversarial negative sampling loss.')
     parser.add_argument('--loss_type', default='u', type=str,
-                        help="Toggle between uniform ('u') and self-adversarial ('a') loss.")
+                        help="Toggle between uniform ('u'), self-adversarial ('a'), and cross entropy ('ce') loss.")
     parser.add_argument('--gradient_clipping', default=-1, type=float,
                         help="Specify a s.t. gradients will be clipped to (-a,a). Default is no clipping.")
     parser.add_argument('--num_negative_samples', default=10, type=int,
@@ -388,7 +388,7 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
         params = torch.load(args.load_params_path, map_location=device)
         model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    loss_fn = BoxELoss(args)
+    loss_fn = BoxELoss(args, device=device)
 
     best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
     if best_params is not None:

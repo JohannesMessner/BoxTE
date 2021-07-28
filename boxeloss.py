@@ -5,13 +5,17 @@ class BoxELoss():
     """
     Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
     """
-    def __init__(self, args):
+    def __init__(self, args, device='cpu'):
         if args.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples}
         elif args.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
             self.loss_fn = adversarial_loss
             self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp}
+        elif args.loss_type in ['cross entropy', 'cross-entropy', 'ce']:
+            self.loss_fn = cross_entropy_loss
+            self.fn_kwargs = {'ce_loss': torch.nn.CrossEntropyLoss(),
+                              'device': device}
 
     def __call__(self, positive_tuples, negative_tuples):
         return self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
@@ -81,3 +85,11 @@ def adversarial_loss(positive_triple, negative_triples, gamma, alpha):
     """
     triple_weights = triple_probs(negative_triples, alpha)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights)
+
+
+def cross_entropy_loss(positive_triple, negative_triples, ce_loss, device='cpu'):
+    pos_scores = score(*positive_triple)
+    neg_scores = score(*negative_triples)
+    combined_inv_scores = torch.cat((-pos_scores, -neg_scores), dim=0).t()
+    target = torch.zeros((combined_inv_scores.shape[0]), dtype=torch.long, device=device)
+    return ce_loss(combined_inv_scores, target)
