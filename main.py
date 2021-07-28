@@ -89,6 +89,8 @@ def parse_args(args):
                              "TempBoxE_RMLP_Plus, TempBoxE_M].")
     parser.add_argument('--de_time_prop', default=0.3, type=float,
                         help="Proportion of features considered temporal in the model varinat DEBoxE_B")
+    parser.add_argument('--time_reg_weight', default=0.01, type=float,
+                       help="Weight given to the temporal regularizer, if enabled.")
     parser.add_argument('--de_activation', default='sine', type=str,
                         help="Activation function used on temporal features in the model variant DEBoxE_B."
                              "Currently 'sine' and 'sigmoid' are supported.")
@@ -112,6 +114,8 @@ def parse_args(args):
                         help='For 1bpt model, learn one scalar factor per relation that is multiplied with time bump.')
     parser.add_argument('--use_e_factor', dest='use_e_factor', action='store_true',
                         help='For 1bpt model, learn one scalar factor per entity that is multiplied with time bump.')
+    parser.add_argument('--use_time_reg', dest='use_time_reg', action='store_true',
+                        help='Regularize over time bumps, favouring smoothness')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
@@ -122,6 +126,7 @@ def parse_args(args):
     parser.set_defaults(layer_affine=False)
     parser.set_defaults(use_r_factor=False)
     parser.set_defaults(use_e_factor=False)
+    parser.set_defaults(use_time_reg=False)
     args = parser.parse_args(args)
     if args.model_variant in ['StaticBoxE', 'static']:
         args.static = True
@@ -249,7 +254,10 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
             timer.log('end_forward')
-            loss = loss_fn(positive_emb, negative_emb)
+            if args.use_time_reg:
+                loss = loss_fn(positive_emb, negative_emb, model.time_bumps)
+            else:
+                loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
                 logging.warning('Loss is {}. Skipping to next mini batch.'.format(loss.item()))
                 continue
