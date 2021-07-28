@@ -62,8 +62,11 @@ def uniform_loss(positives, negatives, gamma, w):
 
 
 def triple_probs(negative_triples, alpha):
-    scores = ((1 / score(*negative_triples)) * alpha).exp()
-    div = scores.sum(dim=0)
+    eps = torch.finfo(torch.float32).eps
+    pre_exp_scores = ((1 / (score(*negative_triples) + eps)) * alpha)
+    pre_exp_scores = torch.minimum(pre_exp_scores, torch.tensor([85.0]))  # avoid exp exploding to inf
+    scores = pre_exp_scores.exp()
+    div = scores.sum(dim=0) + eps
     return scores / div
 
 

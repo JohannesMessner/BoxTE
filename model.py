@@ -773,40 +773,12 @@ class DEBoxE_TimeEntEmb(BaseBoxE):
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 
 
-def to_spherical(vecs, device):
-    '''
-    Transforms vectors in cartesian coordinates to spherical coordinates
-    For algorithm description, including special and ambiguous cases, see https://en.wikipedia.org/wiki/N-sphere#Spherical_coordinates
-    '''
-    squares = vecs ** 2
-    r_squared = squares.sum(dim=1)
-    r = r_squared.sqrt()
-    angles = []
-    k = torch.zeros(len(vecs), device=device)
-    for i, x_i in enumerate(vecs.t()):  # iterate over embedding dims
-        if i == len(vecs.t()) - 1:  # last dim has no associated angle
-            continue
-        eps_abs = 0.01
-        norm_div = (r_squared - k).sqrt()
-        # catch ambiguous case where divisor is 0
-        norm_div_not_zero = torch.count_nonzero(norm_div.unsqueeze(1).detach(), dim=1).squeeze() > 0.0
-        #norm_div_not_zero = torch.count_nonzero(torch.tensor([2]))#.squeeze()# > 0.0
-        acos_input = torch.where(norm_div_not_zero, (x_i / norm_div), torch.tensor([1.0 + eps_abs], device=device))
-        # catch special case where x_i != 0 and forall x_j, j > i: x_j = 0
-        not_special_case = torch.logical_or((norm_div != x_i), x_i == 0)
-        acos_input = torch.where(not_special_case, acos_input,
-                                 torch.where(x_i >= 0, torch.tensor([1.0 + eps_abs], device=device),
-                                             torch.tensor([-1.0 - eps_abs], device=device)))
-        # sanity epsilon to avoid nan's
-        eps = torch.where(acos_input < 0, eps_abs, -eps_abs)
-        angles.append((acos_input + eps).acos())
-        k = k + squares[:, i]
-    angles = torch.stack(angles, dim=1)
-    angles[:, -1] = torch.where(vecs[:, -1] < 0, 2 * math.pi - angles[:, -1], angles[:, -1])
-    return torch.cat((r.view(-1, 1), angles), dim=1)
-
-
 def to_cartesian(vecs, device):
+    nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape
+    og_shape = (nb_examples, batch_size, nb_timebumps, emb_dim)
+    flat_shape = (nb_examples * batch_size * nb_timebumps, emb_dim)
+    vecs = vecs.view(flat_shape)
+
     r = vecs[:, 0]
     angles = vecs[:, 1:]
     cos_vec = angles.cos()
@@ -817,7 +789,7 @@ def to_cartesian(vecs, device):
         xs.append(r * running_sin * cos_vec[:, i_a])
         running_sin = running_sin * sin_vec[:, i_a].clone()
     xs.append(r * running_sin)
-    return torch.stack(xs, dim=1)
+    return torch.stack(xs, dim=1).view(og_shape)
 
 
 def to_angle_interval(angles):
@@ -859,11 +831,12 @@ class TempBoxE(BaseBoxE):
         og_shape = (nb_examples, batch_size, nb_timebumps, emb_dim)
         flat_shape = (nb_examples * batch_size * nb_timebumps, emb_dim)
         angles = to_angle_interval(angles)
-        angles = torch.cat([angles for _ in range(emb_dim-1)], dim=-1)
-        vecs_sph = to_spherical(vecs.view(flat_shape), device=self.device)
+        angles = torch.cat([angles for _ in range(emb_dim - 1)], dim=3)  # same angle for all dims
+        vecs_sph = vecs.view(flat_shape)  # interpret given vectors as spherical coordinates
+        vecs_sph[:, 1:] = to_angle_interval(vecs_sph[:, 1:])  # angles need to be in [0, 2pi)
         vecs_sph[:, 1:] += angles.view((nb_examples * batch_size * nb_timebumps, emb_dim-1))  # apply angles
-        vecs_sph[:, 1:] = to_angle_interval(vecs_sph[:, 1:])
-        return to_cartesian(vecs_sph, device=self.device).view(og_shape)
+        vecs_sph[:, 1:] = to_angle_interval(vecs_sph[:, 1:])  # angles need to be in [0, 2pi)
+        return vecs_sph.view(og_shape).abs()  # radii need to be >= 0
 
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
@@ -879,6 +852,11 @@ class TempBoxE(BaseBoxE):
         if self.use_e_rotation:
             time_vecs_h = self.apply_rotation(time_vecs_h, self.e_angles[e_h_idx, :, :])
             time_vecs_t = self.apply_rotation(time_vecs_t, self.e_angles[e_t_idx, :, :])
+        if self.use_r_rotation or self.use_e_rotation:
+            # if rotations are used, we interpret saved time bumps as spherical coordinates
+            # so we need to transform to cartesian before applying the bumps
+            time_vecs_h = to_cartesian(time_vecs_h, device=self.device)
+            time_vecs_t = to_cartesian(time_vecs_t, device=self.device)
         if self.use_r_factor:
             time_vecs_h *= self.r_factor[rel_idx, :, :]
             time_vecs_t *= self.r_factor[rel_idx, :, :]
