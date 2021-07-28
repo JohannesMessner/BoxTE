@@ -11,7 +11,7 @@ class BoxELoss():
             self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples}
         elif args.loss_type in ['adversarial', 'self-adversarial', 'self adversarial', 'a']:
             self.loss_fn = adversarial_loss
-            self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp}
+            self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp, 'device': device}
         elif args.loss_type in ['cross entropy', 'cross-entropy', 'ce']:
             self.loss_fn = cross_entropy_loss
             self.fn_kwargs = {'ce_loss': torch.nn.CrossEntropyLoss(),
@@ -65,16 +65,16 @@ def uniform_loss(positives, negatives, gamma, w):
     return torch.sum(s1 - s2)
 
 
-def triple_probs(negative_triples, alpha):
+def triple_probs(negative_triples, alpha, device='cpu'):
     eps = torch.finfo(torch.float32).eps
     pre_exp_scores = ((1 / (score(*negative_triples) + eps)) * alpha)
-    pre_exp_scores = torch.minimum(pre_exp_scores, torch.tensor([85.0]))  # avoid exp exploding to inf
+    pre_exp_scores = torch.minimum(pre_exp_scores, torch.tensor([85.0], device=device))  # avoid exp exploding to inf
     scores = pre_exp_scores.exp()
     div = scores.sum(dim=0) + eps
     return scores / div
 
 
-def adversarial_loss(positive_triple, negative_triples, gamma, alpha):
+def adversarial_loss(positive_triple, negative_triples, gamma, alpha, device='cpu'):
     """
     Calculates self-adversarial negative sampling loss as presented in RotatE, Sun et. al.
     @:param positive_triple tuple (entities, relations, times), for details see return of model.forward
@@ -83,7 +83,7 @@ def adversarial_loss(positive_triple, negative_triples, gamma, alpha):
     @:param alpha hyperparameter, see RotatE paper
     @:param ignore_time if True, then time information is ignored and standard BoxE is executed
     """
-    triple_weights = triple_probs(negative_triples, alpha)
+    triple_weights = triple_probs(negative_triples, alpha, device)
     return uniform_loss(positive_triple, negative_triples, gamma, triple_weights)
 
 
