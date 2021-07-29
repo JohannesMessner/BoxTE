@@ -8,6 +8,7 @@ class BoxELoss():
     def __init__(self, args, device='cpu'):
         self.use_time_reg = args.use_time_reg
         self.time_reg_weight = args.time_reg_weight
+        self.time_reg_order = args.time_reg_order
         if args.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples}
@@ -24,7 +25,7 @@ class BoxELoss():
         if not self.use_time_reg:
             return l
         else:
-            return l + self.time_reg_weight * time_reg(time_bumps)
+            return l + self.time_reg_weight * time_reg(time_bumps, norm_ord=self.time_reg_order)
 
 
 def dist(entity_emb, boxes):

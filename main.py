@@ -91,6 +91,8 @@ def parse_args(args):
                         help="Proportion of features considered temporal in the model varinat DEBoxE_B")
     parser.add_argument('--time_reg_weight', default=0.01, type=float,
                        help="Weight given to the temporal regularizer, if enabled.")
+    parser.add_argument('--time_reg_order', default=4, type=int,
+                        help="Order ('p') of time regularizer norm.")
     parser.add_argument('--de_activation', default='sine', type=str,
                         help="Activation function used on temporal features in the model variant DEBoxE_B."
                              "Currently 'sine' and 'sigmoid' are supported.")
