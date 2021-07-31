@@ -814,11 +814,15 @@ class TempBoxE(BaseBoxE):
         self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
         self.init_f(self.time_bumps, *weight_init_args)
         if self.use_r_factor:
-            self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
-            torch.nn.init.normal_(self.r_factor, 1, 0.1)
+            self.r_time_attention = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+            self.r_time_scale = nn.Parameter(torch.empty(self.nb_relations, 1, 1))
+            torch.nn.init.normal_(self.r_time_attention, 1/self.nb_timebumps, 0.1)
+            torch.nn.init.normal_(self.r_time_scale, 1, 0.1)
         if self.use_e_factor:
-            self.e_factor = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
-            torch.nn.init.normal_(self.e_factor, 1, 0.1)
+            self.e_time_attention = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
+            self.e_time_scale = nn.Parameter(torch.empty(self.nb_relations, 1, 1))
+            torch.nn.init.normal_(self.e_time_attention, 1/self.nb_timebumps, 0.1)
+            torch.nn.init.normal_(self.e_time_scale, 1, 0.1)
         if self.use_r_rotation:
             self.r_angles = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_angles, 0, 0.1)
@@ -858,11 +862,11 @@ class TempBoxE(BaseBoxE):
             time_vecs_h = to_cartesian(time_vecs_h, device=self.device)
             time_vecs_t = to_cartesian(time_vecs_t, device=self.device)
         if self.use_r_factor:
-            time_vecs_h *= self.r_factor[rel_idx, :, :]
-            time_vecs_t *= self.r_factor[rel_idx, :, :]
+            time_vecs_h *= nn.functional.softmax(self.r_time_attention[rel_idx, :, :], dim=1) * self.r_time_scale[rel_idx]
+            time_vecs_t *= nn.functional.softmax(self.r_time_attention[rel_idx, :, :], dim=1) * self.r_time_scale[rel_idx]
         if self.use_e_factor:
-            time_vecs_h *= self.e_factor[e_h_idx, :, :]
-            time_vecs_t *= self.e_factor[e_t_idx, :, :]
+            time_vecs_h *= nn.functional.softmax(self.e_time_attention[e_h_idx, :, :], dim=1) * self.e_time_scale[e_h_idx]
+            time_vecs_t *= nn.functional.softmax(self.e_time_attention[e_t_idx, :, :], dim=1) * self.e_time_scale[e_t_idx]
         time_vecs_h, time_vecs_t = time_vecs_h.sum(dim=2), time_vecs_t.sum(dim=2)  # sum over all time bumps
         time_vecs = torch.stack((time_vecs_h, time_vecs_t), dim=2)  # apply to both heads and tails
         entity_embs = entity_embs + self.time_weight * time_vecs
