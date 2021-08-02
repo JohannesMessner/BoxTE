@@ -243,7 +243,7 @@ def instantiate_model(args, kg, device):
     return model
 
 
-def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device='cpu'):
+def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, timestamp, device='cpu'):
     logging.info('training started')
     best_mrr = -1
     best_params = None
@@ -300,6 +300,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             if metrics['mrr'] > best_mrr:
                 best_mrr = metrics['mrr']
                 best_params = copy.deepcopy(model.state_dict())
+                save_params(args, best_params, timestamp)
     logging.info('final validation')
     timer.log('start_validation')
     if args.eval_per_timestep:
@@ -388,7 +389,7 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
             'h@10': h_at_10.item()}
 
 
-def train_test_val(args, device='cpu', saved_params_dir=None):
+def train_test_val(args, timestamp, device='cpu', saved_params_dir=None):
     kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device,
                       entity_subset=args.entity_subset, kg_is_static=args.static)
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
@@ -401,7 +402,8 @@ def train_test_val(args, device='cpu', saved_params_dir=None):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_fn = BoxELoss(args, device=device)
 
-    best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, device=device)
+    best_params, best_mrr, progress = train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args,
+                                                     timestamp, device=device)
     if best_params is not None:
         model.load_state_dict(best_params)
     metrics = test(kg, testloader, model, args, device=device, corrupt_triples_batch_size=args.metrics_batch_size)
@@ -417,6 +419,10 @@ def save_data(args, metrics, model_params, progress, timestamp):
         print(metrics, file=f)
     with open(args.log_dir + '/' + timestamp + '-' + args.info_filename + '.txt', 'w') as f:
         pprint.pprint(vars(args), stream=f)
+
+
+def save_params(args, model_params, timestamp):
+    torch.save(model_params, args.log_dir + timestamp + '-' + args.params_filename + '.pt')
 
 
 def run_loop(saved_params_dir=None):
@@ -435,7 +441,7 @@ def run_loop(saved_params_dir=None):
         logging.basicConfig(handlers=[logging.StreamHandler()], level=logging.INFO)
     logging.info('Running on {}'.format(device))
     logging.info('%s', args)
-    metrics, progress, model_params = train_test_val(args, device=device, saved_params_dir=saved_params_dir)
+    metrics, progress, model_params = train_test_val(args, timestamp, device=device, saved_params_dir=saved_params_dir)
     logging.info('FINAL TEST METRICS')
     logging.info('%s', metrics)
     save_data(args, metrics, model_params, progress, timestamp)
