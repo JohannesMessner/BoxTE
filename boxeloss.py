@@ -5,7 +5,7 @@ class BoxELoss():
     """
     Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
     """
-    def __init__(self, args, device='cpu'):
+    def __init__(self, args, device='cpu', timebump_shape=None):
         self.use_time_reg = args.use_time_reg
         self.time_reg_weight = args.time_reg_weight
         self.time_reg_order = args.time_reg_order
@@ -19,13 +19,32 @@ class BoxELoss():
             self.loss_fn = cross_entropy_loss
             self.fn_kwargs = {'ce_loss': torch.nn.CrossEntropyLoss(),
                               'device': device}
+        if self.use_time_reg:
+            if timebump_shape is None:
+                raise ValueError('Time reg is enabled but timebump shape is not provided.')
+            self.diff_matrix = make_diff_matrix(timebump_shape)
 
     def __call__(self, positive_tuples, negative_tuples, time_bumps=None):
         l = self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
         if not self.use_time_reg:
             return l
         else:
-            return l + self.time_reg_weight * time_reg(time_bumps, norm_ord=self.time_reg_order)
+            return l + self.time_reg_weight * self.time_reg(time_bumps, norm_ord=self.time_reg_order)
+
+    def time_reg(self, time_bumps, norm_ord=4):
+        # max_time, nb_timebumps, embedding_dim = time_bumps.shape
+        time_bumps = time_bumps.transpose(0, 1)
+        diffs = self.diff_matrix.matmul(time_bumps)
+        return (torch.linalg.norm(diffs, ord=norm_ord, dim=2) ** norm_ord).mean()
+
+
+def make_diff_matrix(timebump_shape):
+    (max_time, nb_timebumps, embedding_dim) = timebump_shape
+    m = torch.eye(max_time, max_time, requires_grad=False)
+    for i in range(m.shape[0] - 1):
+        m[i, i + 1] = -1
+    m = m[:-1, :]
+    return m.unsqueeze(0)
 
 
 def dist(entity_emb, boxes):
@@ -100,13 +119,3 @@ def cross_entropy_loss(positive_triple, negative_triples, ce_loss, device='cpu')
     combined_inv_scores = torch.cat((-pos_scores, -neg_scores), dim=0).t()
     target = torch.zeros((combined_inv_scores.shape[0]), dtype=torch.long, device=device)
     return ce_loss(combined_inv_scores, target)
-
-
-def time_reg(time_bumps, norm_ord=4):
-    # time_bump.shape = (max_time, nb_timebumps, embedding_dim)
-    max_time, nb_timebumps, embedding_dim = time_bumps.shape
-    diffs = []
-    for time in range(max_time - 1):
-        diffs.append(time_bumps[time + 1] - time_bumps[time])
-    diffs = torch.stack(diffs)
-    return (torch.linalg.norm(diffs, ord=norm_ord, dim=2) ** norm_ord).mean()
