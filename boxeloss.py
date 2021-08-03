@@ -22,7 +22,7 @@ class BoxELoss():
         if self.use_time_reg:
             if timebump_shape is None:
                 raise ValueError('Time reg is enabled but timebump shape is not provided.')
-            self.diff_matrix = make_diff_matrix(timebump_shape)
+            self.diff_matrix = make_diff_matrix(timebump_shape, device=device)
 
     def __call__(self, positive_tuples, negative_tuples, time_bumps=None):
         l = self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
@@ -38,9 +38,9 @@ class BoxELoss():
         return (torch.linalg.norm(diffs, ord=norm_ord, dim=2) ** norm_ord).mean()
 
 
-def make_diff_matrix(timebump_shape):
+def make_diff_matrix(timebump_shape, device):
     (max_time, nb_timebumps, embedding_dim) = timebump_shape
-    m = torch.eye(max_time, max_time, requires_grad=False)
+    m = torch.eye(max_time, max_time, requires_grad=False, device=device)
     for i in range(m.shape[0] - 1):
         m[i, i + 1] = -1
     m = m[:-1, :]
