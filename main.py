@@ -429,6 +429,7 @@ def run_loop(saved_params_dir=None):
     date_time_now = datetime.now()
     timestamp = '' + str(date_time_now.year) + str(date_time_now.month) + str(date_time_now.day) + str(date_time_now.hour) \
                 + str(date_time_now.minute) + str(date_time_now.second) + str(date_time_now.microsecond)
+    print('timestamp: {}'.format(timestamp))
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args = parse_args(None)
     if args.log_filename:
