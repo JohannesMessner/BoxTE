@@ -801,18 +801,27 @@ def to_angle_interval(angles):
 class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
-                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False):
+                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
         else:
             self.embedding_norm_fn_ = nn.Identity()
+        self.nb_time_basis_vecs = nb_time_basis_vecs
         self.use_r_factor, self.use_e_factor = use_r_factor, use_e_factor
         self.use_r_rotation, self.use_e_rotation = use_r_rotation, use_e_rotation
         self.nb_timebumps = nb_timebumps
         self.time_weight = time_weight
-        self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
-        self.init_f(self.time_bumps, *weight_init_args)
+        if not self.nb_time_basis_vecs > 0:  # don't factorize time bumps, learn them directly/explicitly
+            self.factorize_time = False
+            self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
+            self.init_f(self.time_bumps, *weight_init_args)
+        else:  # factorize time bumps into two tensors
+            self.factorize_time = True
+            self.time_bumps_a = nn.Parameter(torch.empty(self.nb_timebumps, self.max_time, self.nb_time_basis_vecs))
+            self.time_bumps_b = nn.Parameter(torch.empty(self.nb_timebumps, self.nb_time_basis_vecs, self.embedding_dim))
+            self.init_f(self.time_bumps_a, *weight_init_args)
+            self.init_f(self.time_bumps_a, *weight_init_args)
         if self.use_r_factor:
             self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_factor, 1, 0.1)
@@ -825,6 +834,11 @@ class TempBoxE(BaseBoxE):
         if self.use_e_rotation:
             self.e_angles = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.e_angles, 0, 0.1)
+
+    def compute_timebumps(self):
+        if not self.factorize_time:
+            return self.time_bumps
+        return torch.matmul(self.time_bumps_a, self.time_bumps_b).transpose(0, 1)
 
     def apply_rotation(self, vecs, angles):
         nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape
@@ -844,8 +858,9 @@ class TempBoxE(BaseBoxE):
         rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
         e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
         e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
-        time_vecs_h = self.time_bumps[time_idx, :, :]
-        time_vecs_t = self.time_bumps[time_idx, :, :]
+        time_bumps = self.compute_timebumps()
+        time_vecs_h = time_bumps[time_idx, :, :]
+        time_vecs_t = time_bumps[time_idx, :, :]
         if self.use_r_rotation:
             time_vecs_h = self.apply_rotation(time_vecs_h, self.r_angles[rel_idx, :, :])
             time_vecs_t = self.apply_rotation(time_vecs_t, self.r_angles[rel_idx, :, :])
