@@ -801,13 +801,14 @@ def to_angle_interval(angles):
 class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
-                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1):
+                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1, norm_time_basis_vecs=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
         else:
             self.embedding_norm_fn_ = nn.Identity()
         self.nb_time_basis_vecs = nb_time_basis_vecs
+        self.norm_time_basis_vecs = norm_time_basis_vecs
         self.use_r_factor, self.use_e_factor = use_r_factor, use_e_factor
         self.use_r_rotation, self.use_e_rotation = use_r_rotation, use_e_rotation
         self.nb_timebumps = nb_timebumps
@@ -838,7 +839,10 @@ class TempBoxE(BaseBoxE):
     def compute_timebumps(self):
         if not self.factorize_time:
             return self.time_bumps
-        return torch.matmul(self.time_bumps_a, self.time_bumps_b).transpose(0, 1)
+        bumps_a = self.time_bumps_a
+        if self.norm_time_basis_vecs:
+            bumps_a = torch.nn.functional.softmax(bumps_a, dim=1)
+        return torch.matmul(bumps_a, self.time_bumps_b).transpose(0, 1)
 
     def apply_rotation(self, vecs, angles):
         nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape

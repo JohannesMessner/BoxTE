@@ -125,6 +125,8 @@ def parse_args(args):
                         help='For 1bpt model, learn one scalar angle per entity that rotates time bump.')
     parser.add_argument('--use_time_reg', dest='use_time_reg', action='store_true',
                         help='Regularize over time bumps, favouring smoothness')
+    parser.add_argument('--norm_time_basis_vecs', dest='norm_time_basis_vecs', action='store_true',
+                        help='Apply softmax function to first term in time bump factorisation, along time axis.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
@@ -138,6 +140,7 @@ def parse_args(args):
     parser.set_defaults(use_r_rotation=False)
     parser.set_defaults(use_e_rotation=False)
     parser.set_defaults(use_time_reg=False)
+    parser.set_defaults(norm_time_basis_vecs=False)
 
     args = parser.parse_args(args)
     if args.model_variant in ['StaticBoxE', 'static']:
@@ -212,7 +215,7 @@ def instantiate_model(args, kg, device):
                          norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
                          use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
                          use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
-                         nb_time_basis_vecs=args.nb_time_basis_vecs).to(device)
+                         nb_time_basis_vecs=args.nb_time_basis_vecs, norm_time_basis_vecs=args.norm_time_basis_vecs).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
