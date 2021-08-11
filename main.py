@@ -98,6 +98,9 @@ def parse_args(args):
                              "Currently 'sine' and 'sigmoid' are supported.")
     parser.add_argument('--nb_timebumps', default=1, type=int,
                         help="Number of bumps each time step has.")
+    parser.add_argument('--nb_time_basis_vecs', default=-1, type=int,
+                        help="Number of basis vectors used in time bump factorization. Default is to not use"
+                             "factorization, but to learn time bumps directly.")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -208,7 +211,8 @@ def instantiate_model(args, kg, device):
                          weight_init_args=uniform_init_args, time_weight=args.time_weight,
                          norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
                          use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
-                         use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation).to(device)
+                         use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
+                         nb_time_basis_vecs=args.nb_time_basis_vecs).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
