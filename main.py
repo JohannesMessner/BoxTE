@@ -119,6 +119,8 @@ def parse_args(args):
                         help='For 1bpt model, learn one scalar factor per relation that is multiplied with time bump.')
     parser.add_argument('--use_e_factor', dest='use_e_factor', action='store_true',
                         help='For 1bpt model, learn one scalar factor per entity that is multiplied with time bump.')
+    parser.add_argument('--use_r_t_factor', dest='use_r_t_factor', action='store_true',
+                        help='For 1bpt model, learn one scalar factor per (relation, time)-pair that is multiplied with time bump.')
     parser.add_argument('--use_r_rotation', dest='use_r_rotation', action='store_true',
                         help='For 1bpt model, learn one scalar angle per relation that rotates time bump.')
     parser.add_argument('--use_e_rotation', dest='use_e_rotation', action='store_true',
@@ -136,6 +138,7 @@ def parse_args(args):
     parser.set_defaults(layer_norm=False)
     parser.set_defaults(layer_affine=False)
     parser.set_defaults(use_r_factor=False)
+    parser.set_defaults(use_r_t_factor=False)
     parser.set_defaults(use_e_factor=False)
     parser.set_defaults(use_r_rotation=False)
     parser.set_defaults(use_e_rotation=False)
@@ -215,7 +218,8 @@ def instantiate_model(args, kg, device):
                          norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
                          use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
                          use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
-                         nb_time_basis_vecs=args.nb_time_basis_vecs, norm_time_basis_vecs=args.norm_time_basis_vecs).to(device)
+                         nb_time_basis_vecs=args.nb_time_basis_vecs,
+                         norm_time_basis_vecs=args.norm_time_basis_vecs, use_r_t_factor=args.use_r_t_factor).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,

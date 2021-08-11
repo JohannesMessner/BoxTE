@@ -801,7 +801,8 @@ def to_angle_interval(angles):
 class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
-                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1, norm_time_basis_vecs=False):
+                 nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1,
+                 norm_time_basis_vecs=False, use_r_t_factor=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
@@ -809,7 +810,7 @@ class TempBoxE(BaseBoxE):
             self.embedding_norm_fn_ = nn.Identity()
         self.nb_time_basis_vecs = nb_time_basis_vecs
         self.norm_time_basis_vecs = norm_time_basis_vecs
-        self.use_r_factor, self.use_e_factor = use_r_factor, use_e_factor
+        self.use_r_factor, self.use_e_factor, self.use_r_t_factor = use_r_factor, use_e_factor, use_r_t_factor
         self.use_r_rotation, self.use_e_rotation = use_r_rotation, use_e_rotation
         self.nb_timebumps = nb_timebumps
         self.time_weight = time_weight
@@ -826,6 +827,9 @@ class TempBoxE(BaseBoxE):
         if self.use_r_factor:
             self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_factor, 1, 0.1)
+        if self.use_r_t_factor:
+            self.r_t_factor = nn.Parameter(torch.empty(self.nb_relations, self.max_time, self.nb_timebumps, 1))
+            torch.nn.init.normal_(self.r_t_factor, 1, 0.1)
         if self.use_e_factor:
             self.e_factor = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.e_factor, 1, 0.1)
@@ -882,6 +886,9 @@ class TempBoxE(BaseBoxE):
         if self.use_e_factor:
             time_vecs_h *= self.e_factor[e_h_idx, :, :]
             time_vecs_t *= self.e_factor[e_t_idx, :, :]
+        if self.use_r_t_factor:
+            time_vecs_h *= self.r_t_factor[rel_idx, time_idx, :, :]
+            time_vecs_t *= self.r_t_factor[rel_idx, time_idx, :, :]
         time_vecs_h, time_vecs_t = time_vecs_h.sum(dim=2), time_vecs_t.sum(dim=2)  # sum over all time bumps
         time_vecs = torch.stack((time_vecs_h, time_vecs_t), dim=2)  # apply to both heads and tails
         entity_embs = entity_embs + self.time_weight * time_vecs
