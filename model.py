@@ -823,7 +823,7 @@ class TempBoxE(BaseBoxE):
             self.time_bumps_a = nn.Parameter(torch.empty(self.nb_timebumps, self.max_time, self.nb_time_basis_vecs))
             self.time_bumps_b = nn.Parameter(torch.empty(self.nb_timebumps, self.nb_time_basis_vecs, self.embedding_dim))
             self.init_f(self.time_bumps_a, *weight_init_args)
-            self.init_f(self.time_bumps_a, *weight_init_args)
+            self.init_f(self.time_bumps_b, *weight_init_args)
         if self.use_r_factor:
             self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_factor, 1, 0.1)

@@ -279,7 +279,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             positive_emb, negative_emb = model(data, negatives)
             timer.log('end_forward')
             if args.use_time_reg:
-                loss = loss_fn(positive_emb, negative_emb, model.time_bumps)
+                loss = loss_fn(positive_emb, negative_emb, model.compute_timebumps())
             else:
                 loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
@@ -415,7 +415,7 @@ def train_test_val(args, timestamp, device='cpu', saved_params_dir=None):
         model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     if args.use_time_reg:
-        loss_fn = BoxELoss(args, device=device, timebump_shape=model.time_bumps.shape)
+        loss_fn = BoxELoss(args, device=device, timebump_shape=model.compute_timebumps().shape)
     else:
         loss_fn = BoxELoss(args, device=device)
 
