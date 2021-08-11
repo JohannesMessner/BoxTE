@@ -101,6 +101,9 @@ def parse_args(args):
     parser.add_argument('--nb_time_basis_vecs', default=-1, type=int,
                         help="Number of basis vectors used in time bump factorization. Default is to not use"
                              "factorization, but to learn time bumps directly.")
+    parser.add_argument('--ce_reduction', default='mean', type=str,
+                        help="Reduction applied to the output of cross entropy loss."
+                             "'sum' or 'mean'. Default is 'mean'.")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',

@@ -17,7 +17,7 @@ class BoxELoss():
             self.fn_kwargs = {'gamma': args.margin, 'alpha': args.adversarial_temp, 'device': device}
         elif args.loss_type in ['cross entropy', 'cross-entropy', 'ce']:
             self.loss_fn = cross_entropy_loss
-            self.fn_kwargs = {'ce_loss': torch.nn.CrossEntropyLoss(),
+            self.fn_kwargs = {'ce_loss': torch.nn.CrossEntropyLoss(reduction=args.ce_reduction),
                               'device': device}
         if self.use_time_reg:
             if timebump_shape is None:
