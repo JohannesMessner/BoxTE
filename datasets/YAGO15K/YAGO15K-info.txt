@@ -1,0 +1,2 @@
+YAGO15K TGKC dataset taken from https://github.com/nle-ml/mmkb/tree/master/TemporalKGs/yago15k.
+Originally introduced by Garcia-Duran et al in the paper 'Learning Sequence Encoders for Temporal Knowledge Graph Completion' (https://arxiv.org/abs/1709.02314).
