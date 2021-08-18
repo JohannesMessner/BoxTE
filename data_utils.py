@@ -5,6 +5,43 @@ import numpy as np
 import numbers
 
 
+def unfold_yago(path_to_file, out_name):
+    unfolded_facts = ''
+    since_dict = dict()
+    no_beginning_facts = []
+    with open(path_to_file, 'r') as f:
+        lines = f.read().splitlines()
+        for line in lines:
+            line_split = tuple(line.split('\t'))
+            if len(line_split) == 3:  # add dummy time information
+                h, r, t = line_split
+                unfolded_facts += '\n{}\t{}\t{}'.format(h, r, t)
+            elif len(line_split) == 4:
+                h, r, t, token = line_split
+                unfolded_facts += '\n{}\t{}\t{}'.format(h, r, t)
+            else:
+                h, r, t, token, time = line_split
+                time = time.split('-')[0][1:] # only keep year level info
+                if token == '<occursSince>':
+                    since_dict[h+' '+r+' '+t] = time
+                elif token == '<occursUntil>':
+                    beginning_time = since_dict[h+' '+r+' '+t]
+                    if beginning_time:
+                        for interval_time in range(int(beginning_time), int(time)+1, 1):
+                            unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, str(interval_time))
+                        del since_dict[h+' '+r+' '+t]
+                    else:
+                        no_beginning_facts.append((h, r, t, token, time))
+    for h, r, t, token, time in no_beginning_facts:
+        unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
+    for k in since_dict.keys():
+        time = since_dict[k]
+        h, r, t = k.split(' ')
+        unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
+    with open(out_name, 'w') as f:
+        print(unfolded_facts, file=f)
+
+
 class TempKgLoader():
     """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
 
