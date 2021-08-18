@@ -31,6 +31,9 @@ def parse_args(args):
                         help='Path to validation dataset')
     parser.add_argument('--test_path', default='./test.txt',
                         help='Path to test dataset')
+    parser.add_argument('--data_format', default='ICEWS', help="Format the dataset comes in:"
+                                                               "All facts have time, time given in 'yyy-mm-dd' -> ICEWS;"
+                                                               "Some fact have to time, time given in 'yyyy' -> YAGO.")
     parser.add_argument('--log_filename', default='',
                         help='Filename given to log file. Default prints to stderr. Timestamp added automatically.')
     parser.add_argument('--progress_filename', default='progress',
@@ -405,7 +408,7 @@ def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1
 
 def train_test_val(args, timestamp, device='cpu', saved_params_dir=None):
     kg = TempKgLoader(args.train_path, args.test_path, args.valid_path, truncate=args.truncate_datasets, device=device,
-                      entity_subset=args.entity_subset, kg_is_static=args.static)
+                      entity_subset=args.entity_subset, kg_is_static=args.static, data_format=args.data_format)
     trainloader = kg.get_trainloader(batch_size=args.batch_size, shuffle=True)
     valloader = kg.get_validloader(batch_size=args.batch_size, shuffle=True)
     testloader = kg.get_testloader(batch_size=args.batch_size, shuffle=True)

@@ -59,15 +59,26 @@ class TempKgLoader():
         if entity_subset > 0:
             self.subset_data_by_entities(entity_subset)
         self.entity_ids, self.relation_ids, self.id_to_name, self.name_to_id = self.compute_ids()
-        self.train_data = self.dates_to_days(
-            [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
-             self.train_data_raw])
-        self.test_data = self.dates_to_days(
-            [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
-             self.test_data_raw])
-        self.valid_data = self.dates_to_days(
-            [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
-             self.valid_data_raw])
+        if data_format == 'YAGO':
+            self.max_time, self.min_time = self.get_max_min_time(self.train_data_raw + self.test_data_raw + self.valid_data_raw)
+            self.year_to_id, self.id_to_year = self.compute_year_ids()
+        if data_format == 'ICEWS' or data_format == 'GDELT':
+            self.train_data = self.dates_to_days(
+                [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
+                self.train_data_raw])
+            self.test_data = self.dates_to_days(
+                [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
+                self.test_data_raw])
+            self.valid_data = self.dates_to_days(
+                [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], temp) for (h, r, t, temp) in
+                self.valid_data_raw])
+        elif data_format == 'YAGO':
+            self.train_data = [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], self.year_to_id[temp])
+                               for (h, r, t, temp) in self.train_data_raw]
+            self.test_data =[(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], self.year_to_id[temp])
+                             for (h, r, t, temp) in self.test_data_raw]
+            self.valid_data = [(self.name_to_id[h], self.name_to_id[r], self.name_to_id[t], self.year_to_id[temp])
+                               for (h, r, t, temp) in self.valid_data_raw]
         self.train_data_no_timestamps = [(h, r, t) for (h, r, t, _) in self.train_data]
         self.test_data_no_timestamps = [(h, r, t) for (h, r, t, _) in self.test_data]
         self.valid_data_no_timestamps = [(h, r, t) for (h, r, t, _) in self.valid_data]
@@ -76,6 +87,21 @@ class TempKgLoader():
         self.train_fact_set_no_timestamps = set(self.train_data_no_timestamps)
         self.fact_set_no_timestamps = set(self.test_data_no_timestamps + self.valid_data_no_timestamps).union(self.train_fact_set_no_timestamps)
         self.fact_set = set(self.test_data + self.valid_data).union(self.train_fact_set)
+
+    def get_max_min_time(self, tuples):
+        max_time = -300
+        min_time = 3000
+        for h, r, t, time in tuples:
+            if time == '0000-00-00':
+                continue
+            else:
+                int_time = int(time)
+                if int_time > max_time:
+                    max_time = int_time
+                if int_time < min_time:
+                    min_time = int_time
+        return max_time, min_time
+
 
     def subset_data_by_entities(self, nb_entities):
         accepted_es = []
@@ -152,6 +178,18 @@ class TempKgLoader():
             id += 1
         return e_ids, r_ids, id_to_name, name_to_id
 
+    def compute_year_ids(self):
+        id_to_year = dict()
+        year_to_id = dict()
+        for h, r, t, time in (self.train_data_raw + self.test_data_raw + self.valid_data_raw):
+            if time == '0000-00-00':  # dummy time inserted for non-temporal facts
+                year_to_id[time] = -1
+            else:
+                id = int(time) - self.min_time
+                id_to_year[id] = time
+                year_to_id[time] = id
+        return year_to_id, id_to_year
+
     def parse_dataset(self, path_to_file, truncate=-1, data_format='', no_time_info=False):
         tuples = []
         with open(path_to_file, 'r') as f:
@@ -166,12 +204,16 @@ class TempKgLoader():
                     r = '@' + r
                     h, t = '#' + h, '#' + t
                     line_split = (h, r, t, '0000-00-00')
-                else:
+                elif len(line_split) == 4:
                     h, r, t, time = line_split
                     # make entities and relations different from each other
                     r = '@' + r
                     h, t = '#' + h, '#' + t
                     line_split = (h, r, t, time)
+                elif line_split == ('',):
+                    continue  # empty line can be ignored
+                else:
+                    raise ValueError('Line is not parsable')
                 tuples.append(line_split)
         if data_format == 'ICEWS':
             tuples = self.dates_to_days(tuples)
@@ -199,12 +241,12 @@ class TempKgLoader():
     def get_entity_names(self):
         # list of entity names
         name_lists = []
-        name_lists.append([h for (h, _, _, _) in self.train_data_raw])
-        name_lists.append([t for (_, _, t, _) in self.train_data_raw])
-        name_lists.append([h for (h, _, _, _) in self.test_data_raw])
-        name_lists.append([t for (_, _, t, _) in self.test_data_raw])
-        name_lists.append([h for (h, _, _, _) in self.valid_data_raw])
-        name_lists.append([t for (_, _, t, _) in self.valid_data_raw])
+        name_lists.append([fact[0] for fact in self.train_data_raw])
+        name_lists.append([fact[2] for fact in self.train_data_raw])
+        name_lists.append([fact[0] for fact in self.test_data_raw])
+        name_lists.append([fact[2] for fact in self.test_data_raw])
+        name_lists.append([fact[0] for fact in self.valid_data_raw])
+        name_lists.append([fact[2] for fact in self.valid_data_raw])
         flat_names_list = [item for sublist in name_lists for item in sublist]  # from Alex Martelli on stackoverflow https://stackoverflow.com/a/952952
         return list(dict.fromkeys(flat_names_list))  # remove duplicates, requires python >= 3.7 to maintain ordering
 

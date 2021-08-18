@@ -860,6 +860,15 @@ class TempBoxE(BaseBoxE):
         vecs_sph[:, 1:] = to_angle_interval(vecs_sph[:, 1:])  # angles need to be in [0, 2pi)
         return vecs_sph.view(og_shape).abs()  # radii need to be >= 0
 
+    def index_bumps(self, bumps, idx):
+        ''' For atemporal facts, return zero bump; for temporal fact, return appropriate time bump '''
+        zeros = torch.zeros(self.nb_timebumps, self.embedding_dim, device=self.device)
+        ones = torch.ones(self.nb_timebumps, self.embedding_dim, device=self.device)
+        zero_one = torch.stack((zeros, ones))
+        mask_idx = torch.where(idx > 0, torch.tensor([1], device=self.device), torch.tensor([0], device=self.device))
+        temp_fact_mask = zero_one[mask_idx]
+        return bumps[idx] * temp_fact_mask
+
     def compute_embeddings(self, tuples):
         entity_embs, relation_embs = super().compute_embeddings(tuples)
         time_idx = tuples[:, 3]
@@ -867,8 +876,8 @@ class TempBoxE(BaseBoxE):
         e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
         e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
         time_bumps = self.compute_timebumps()
-        time_vecs_h = time_bumps[time_idx, :, :]
-        time_vecs_t = time_bumps[time_idx, :, :]
+        time_vecs_h = self.index_bumps(time_bumps, time_idx)
+        time_vecs_t = self.index_bumps(time_bumps, time_idx)
         if self.use_r_rotation:
             time_vecs_h = self.apply_rotation(time_vecs_h, self.r_angles[rel_idx, :, :])
             time_vecs_t = self.apply_rotation(time_vecs_t, self.r_angles[rel_idx, :, :])
