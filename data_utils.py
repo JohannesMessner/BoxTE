@@ -13,10 +13,10 @@ def unfold_yago(path_to_file, out_name):
         lines = f.read().splitlines()
         for line in lines:
             line_split = tuple(line.split('\t'))
-            if len(line_split) == 3:  # add dummy time information
+            if len(line_split) == 3: # no need to change anything
                 h, r, t = line_split
                 unfolded_facts += '\n{}\t{}\t{}'.format(h, r, t)
-            elif len(line_split) == 4:
+            elif len(line_split) == 4: # ignore token without time stamp
                 h, r, t, token = line_split
                 unfolded_facts += '\n{}\t{}\t{}'.format(h, r, t)
             else:
@@ -40,6 +40,26 @@ def unfold_yago(path_to_file, out_name):
         unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
     with open(out_name, 'w') as f:
         print(unfolded_facts, file=f)
+
+
+def token_to_relation_yago(path_to_file, out_name):
+    processed_facts = ''
+    with open(path_to_file, 'r') as f:
+        lines = f.read().splitlines()
+        for line in lines:
+            line_split = tuple(line.split('\t'))
+            if len(line_split) == 3:  # no need to change anything
+                h, r, t = line_split
+                processed_facts += '\n{}\t{}\t{}'.format(h, r, t)
+            elif len(line_split) == 4:  # ignore token without time stamp
+                h, r, t, token = line_split
+                processed_facts += '\n{}\t{}\t{}'.format(h, r, t)
+            else:  # combine temp token and relation
+                h, r, t, token, time = line_split
+                time = time.split('-')[0][1:] # only keep year level info
+                processed_facts += '\n{}\t{}\t{}\t{}'.format(h, token + '/' + r, t, time)
+    with open(out_name, 'w') as f:
+        print(processed_facts, file=f)
 
 
 class TempKgLoader():
