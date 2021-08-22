@@ -5,6 +5,24 @@ import numpy as np
 import numbers
 
 
+def remove_static_facts_yago_unfolded(path_to_file, out_name):
+    """
+    Takes unfolded yago file and removes all facts without a time stamp
+    """
+    dynamic_facts = ''
+    with open(path_to_file, 'r') as f:
+        lines = f.read().splitlines()
+        for line in lines:
+            line_split = tuple(line.split('\t'))
+            if len(line_split) == 3:  # don't include facts without time stamp
+                pass
+            elif len(line_split) == 4:
+                h, r, t, time = line_split
+                dynamic_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
+    with open(out_name, 'w') as f:
+        print(dynamic_facts, file=f)
+
+
 def unfold_yago(path_to_file, out_name):
     unfolded_facts = ''
     since_dict = dict()
