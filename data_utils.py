@@ -357,7 +357,15 @@ class TempKgLoader():
         tuples_t = torch.from_numpy(tuples_t).reshape((nb_examples, batch_size, 4)).transpose(1,2).to(self.device)
         return tuples_t
 
-    def sample_negatives(self, tuples, nb_samples, sampling_mode='d'):
+    def sample_negatives(self, tuples, nb_samples, sampling_mode='d', corrupt_what='e'):
+        if corrupt_what == 'e':
+            return self.sample_negative_entities(tuples, nb_samples, sampling_mode)
+        elif corrupt_what == 't':
+            return self.sample_negative_timestamp(tuples, nb_samples, sampling_mode)
+        elif corrupt_what in ['et', 'te', 't+e', 'e+t']:
+            return self.sample_negative_time_and_entities(tuples, nb_samples, sampling_mode)
+
+    def sample_negative_entities(self, tuples, nb_samples, sampling_mode='d'):
         _, _, batch_size = tuples.shape
         tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=0)
         max_e_id = len(self.entity_ids)  # we assume entity ids to start at 0
@@ -369,6 +377,41 @@ class TempKgLoader():
         sampled_tuples = replace_mask * replacements + inverse_replace_mask * tuples_rep
         # filter out and replace known positive triples
         sampled_tuples = self.resample_known_positives(sampled_tuples, sampling_mode)
+        return sampled_tuples.long()
+
+    def sample_negative_time_and_entities(self, tuples, nb_samples, sampling_mode='d'):
+        _, _, batch_size = tuples.shape
+        tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=0)
+        max_e_id = len(self.entity_ids)  # we assume entity ids to start at 0
+        sample_ids = torch.randint(max_e_id, size=(nb_samples, 1, batch_size)).to(self.device)  # sample random entities
+        replacement_es = torch.cat((sample_ids, tuples_rep[:,1,:].unsqueeze(1), sample_ids, tuples_rep[:,3,:].unsqueeze(1)), dim=1).to(self.device)
+        sample_times = torch.randint(self.max_time_train, size=(nb_samples, 1, batch_size)).to(self.device)  # sample random time stamps
+        replacement_times = torch.cat(
+            (tuples_rep[:, 0, :].unsqueeze(1), tuples_rep[:, 1, :].unsqueeze(1), tuples_rep[:, 2, :].unsqueeze(1), sample_times), dim=1).to(
+            self.device)
+        rands = torch.randint(3, size=(nb_samples, batch_size))
+        is_head = (rands == 1).unsqueeze(1)  # indicate if head is being replaced
+        is_tail = (rands == 0).unsqueeze(1)
+        is_time = (rands == 2).unsqueeze(1)
+        zeros = torch.zeros(nb_samples, 1, batch_size)
+        ones = torch.ones(nb_samples, 1, batch_size)
+        replace_mask = torch.cat((is_head, zeros, is_tail, torch.zeros(nb_samples, 1, batch_size)), dim=1).to(self.device)
+        inverse_replace_mask = torch.cat((~is_head, ones, ~is_tail, torch.ones(nb_samples, 1, batch_size)), dim=1).to(self.device)
+        sampled_tuples = replace_mask * replacement_es + inverse_replace_mask * tuples_rep
+        time_replace_mask = torch.cat((zeros, zeros, zeros, is_time), dim=1).to(self.device)
+        inverse_time_replace_mask = torch.cat((ones, ones, ones, ~is_time), dim=1).to(self.device)
+        sampled_tuples = time_replace_mask * replacement_times + inverse_time_replace_mask * sampled_tuples
+        # filter out and replace known positive triples
+        sampled_tuples = self.resample_known_positives(sampled_tuples, sampling_mode)
+        return sampled_tuples.long()
+
+    def sample_negative_timestamp(self, tuples, nb_samples, sampling_mode='d'):
+        _, _, batch_size = tuples.shape
+        sample_times = torch.randint(self.max_time_train, size=(nb_samples, batch_size)).to(self.device)  # sample random time stamps
+        tuples_rep = torch.repeat_interleave(tuples, nb_samples, dim=0)
+        tuples_rep[:, 3, :] = sample_times
+        # filter out and replace known positive triples
+        sampled_tuples = self.resample_known_positives(tuples_rep, sampling_mode)
         return sampled_tuples.long()
 
     def compute_filter_idx(self, tuples):

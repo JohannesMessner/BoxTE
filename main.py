@@ -111,6 +111,8 @@ def parse_args(args):
     parser.add_argument('--ce_reduction', default='mean', type=str,
                         help="Reduction applied to the output of cross entropy loss."
                              "'sum' or 'mean'. Default is 'mean'.")
+    parser.add_argument('--neg_sample_what', default='e', type=str,
+                        help="Decide if to corrupt entities ('e'), time stamps ('t'), or both ('e+t').")
     parser.add_argument('--extrapolate', dest='extrapolate', action='store_true',
                         help='Enabled temporal extrapolation by approximating time boxes with an MLP.')
     parser.add_argument('--no_initial_validation', dest='no_initial_validation', action='store_true',
@@ -283,7 +285,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             data = torch.stack(data).to(device).unsqueeze(0)
             optimizer.zero_grad()
             timer.log('start_neg_sampling')
-            negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type)
+            negatives = kg.sample_negatives(data, args.num_negative_samples, args.neg_sampling_type, args.neg_sample_what)
             timer.log('end_neg_sampling')
             timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
