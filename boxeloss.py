@@ -7,8 +7,11 @@ class BoxELoss():
     """
     def __init__(self, args, device='cpu', timebump_shape=None):
         self.use_time_reg = args.use_time_reg
+        self.use_ball_reg = args.use_ball_reg
         self.time_reg_weight = args.time_reg_weight
+        self.ball_reg_weight = args.ball_reg_weight
         self.time_reg_order = args.time_reg_order
+        self.ball_reg_order = args.ball_reg_order
         if args.loss_type in ['uniform', 'u']:
             self.loss_fn = uniform_loss
             self.fn_kwargs = {'gamma': args.margin, 'w': 1.0 / args.num_negative_samples}
@@ -26,16 +29,28 @@ class BoxELoss():
 
     def __call__(self, positive_tuples, negative_tuples, time_bumps=None):
         l = self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
-        if not self.use_time_reg:
-            return l
-        else:
-            return l + self.time_reg_weight * self.time_reg(time_bumps, norm_ord=self.time_reg_order)
+        if self.use_time_reg:
+            l = l + self.time_reg_weight * self.time_reg(time_bumps, norm_ord=self.time_reg_order)
+        if self.use_ball_reg:
+            l = l + self.ball_reg(entities=positive_tuples[0], relations=positive_tuples[1], norm_ord=self.ball_reg_order)
+        return l
 
     def time_reg(self, time_bumps, norm_ord=4):
         # max_time, nb_timebumps, embedding_dim = time_bumps.shape
         time_bumps = time_bumps.transpose(0, 1)
         diffs = self.diff_matrix.matmul(time_bumps)
         return (torch.linalg.norm(diffs, ord=norm_ord, dim=2) ** norm_ord).mean()
+
+    def ball_reg(self, entities, relations, norm_ord=4):
+        heads = entities[:, :, 0, :]
+        tails = entities[:, :, 1, :]
+        box_centers = relations[:, :, :, 0, :] - relations[:, :, :, 0, :]
+        head_centers = box_centers[:, :, 0, :]
+        tail_centers = box_centers[:, :, 1, :]
+        return (torch.linalg.norm(heads, ord=norm_ord, dim=-1) ** norm_ord
+                + torch.linalg.norm(tails, ord=norm_ord, dim=-1) ** norm_ord
+                + torch.linalg.norm(head_centers, ord=norm_ord, dim=-1) ** norm_ord
+                + torch.linalg.norm(tail_centers, ord=norm_ord, dim=-1) ** norm_ord).sum()
 
 
 def make_diff_matrix(timebump_shape, device):

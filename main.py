@@ -94,8 +94,12 @@ def parse_args(args):
                         help="Proportion of features considered temporal in the model varinat DEBoxE_B")
     parser.add_argument('--time_reg_weight', default=0.01, type=float,
                        help="Weight given to the temporal regularizer, if enabled.")
+    parser.add_argument('--ball_reg_weight', default=0.01, type=float,
+                        help="Weight given to the ball regularizer, if enabled.")
     parser.add_argument('--time_reg_order', default=4, type=int,
                         help="Order ('p') of time regularizer norm.")
+    parser.add_argument('--ball_reg_order', default=4, type=int,
+                        help="Order ('p') of ball regularizer norm.")
     parser.add_argument('--de_activation', default='sine', type=str,
                         help="Activation function used on temporal features in the model variant DEBoxE_B."
                              "Currently 'sine' and 'sigmoid' are supported.")
@@ -133,6 +137,8 @@ def parse_args(args):
                         help='For 1bpt model, learn one scalar angle per entity that rotates time bump.')
     parser.add_argument('--use_time_reg', dest='use_time_reg', action='store_true',
                         help='Regularize over time bumps, favouring smoothness')
+    parser.add_argument('--use_ball_reg', dest='use_ball_reg', action='store_true',
+                        help='Regularize all embedding vectors, concentrating them into a ball around zero.')
     parser.add_argument('--norm_time_basis_vecs', dest='norm_time_basis_vecs', action='store_true',
                         help='Apply softmax function to first term in time bump factorisation, along time axis.')
     parser.set_defaults(ignore_time=False)
@@ -149,6 +155,7 @@ def parse_args(args):
     parser.set_defaults(use_r_rotation=False)
     parser.set_defaults(use_e_rotation=False)
     parser.set_defaults(use_time_reg=False)
+    parser.set_defaults(use_ball_reg=False)
     parser.set_defaults(norm_time_basis_vecs=False)
 
     args = parser.parse_args(args)
@@ -282,7 +289,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             positive_emb, negative_emb = model(data, negatives)
             timer.log('end_forward')
             if args.use_time_reg:
-                loss = loss_fn(positive_emb, negative_emb, model.compute_timebumps())
+                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_timebumps())
             else:
                 loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
