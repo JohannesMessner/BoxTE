@@ -47,8 +47,6 @@ class BoxELoss():
         box_centers = (relations[:, :, :, 0, :] + relations[:, :, :, 1, :]) / 2
         head_centers = box_centers[:, :, 0, :]
         tail_centers = box_centers[:, :, 1, :]
-        heads_norm = torch.linalg.norm(heads, ord=norm_ord, dim=-1) ** norm_ord
-        headbox_norm = torch.linalg.norm(head_centers, ord=norm_ord, dim=-1) ** norm_ord
         return (torch.linalg.norm(heads, ord=norm_ord, dim=-1) ** norm_ord
                 + torch.linalg.norm(tails, ord=norm_ord, dim=-1) ** norm_ord
                 + torch.linalg.norm(head_centers, ord=norm_ord, dim=-1) ** norm_ord
