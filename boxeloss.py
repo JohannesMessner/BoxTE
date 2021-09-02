@@ -44,7 +44,7 @@ class BoxELoss():
     def ball_reg(self, entities, relations, norm_ord=4):
         heads = entities[:, :, 0, :]
         tails = entities[:, :, 1, :]
-        box_centers = relations[:, :, :, 0, :] - relations[:, :, :, 0, :]
+        box_centers = relations[:, :, :, 0, :] - relations[:, :, :, 1, :]
         head_centers = box_centers[:, :, 0, :]
         tail_centers = box_centers[:, :, 1, :]
         return (torch.linalg.norm(heads, ord=norm_ord, dim=-1) ** norm_ord
