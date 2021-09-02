@@ -50,7 +50,7 @@ class BoxELoss():
         return (torch.linalg.norm(heads, ord=norm_ord, dim=-1) ** norm_ord
                 + torch.linalg.norm(tails, ord=norm_ord, dim=-1) ** norm_ord
                 + torch.linalg.norm(head_centers, ord=norm_ord, dim=-1) ** norm_ord
-                + torch.linalg.norm(tail_centers, ord=norm_ord, dim=-1) ** norm_ord).sum()
+                + torch.linalg.norm(tail_centers, ord=norm_ord, dim=-1) ** norm_ord).mean()
 
 
 def make_diff_matrix(timebump_shape, device):
