@@ -32,7 +32,7 @@ class BoxELoss():
         if self.use_time_reg:
             l = l + self.time_reg_weight * self.time_reg(time_bumps, norm_ord=self.time_reg_order)
         if self.use_ball_reg:
-            l = l + self.ball_reg(entities=positive_tuples[0], relations=positive_tuples[1], norm_ord=self.ball_reg_order)
+            l = l + self.ball_reg_weight * self.ball_reg(entities=positive_tuples[0], relations=positive_tuples[1], norm_ord=self.ball_reg_order)
         return l
 
     def time_reg(self, time_bumps, norm_ord=4):
