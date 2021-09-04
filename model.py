@@ -802,7 +802,7 @@ class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
                  nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1,
-                 norm_time_basis_vecs=False, use_r_t_factor=False, dropout_p=0.0):
+                 norm_time_basis_vecs=False, use_r_t_factor=False, dropout_p=0.0, arity_spec_timebumps=False):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
@@ -816,16 +816,37 @@ class TempBoxE(BaseBoxE):
         self.time_weight = time_weight
         self.droput_p = dropout_p
         self.droput = nn.Dropout(dropout_p)
+        self.arity_spec_timebumps = arity_spec_timebumps
         if not self.nb_time_basis_vecs > 0:  # don't factorize time bumps, learn them directly/explicitly
             self.factorize_time = False
-            self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
-            self.init_f(self.time_bumps, *weight_init_args)
+            if self.arity_spec_timebumps:
+                self.head_time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
+                self.tail_time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
+                self.init_f(self.head_time_bumps, *weight_init_args)
+                self.init_f(self.tail_time_bumps, *weight_init_args)
+            else:
+                self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
+                self.init_f(self.time_bumps, *weight_init_args)
         else:  # factorize time bumps into two tensors
             self.factorize_time = True
-            self.time_bumps_a = nn.Parameter(torch.empty(self.nb_timebumps, self.max_time, self.nb_time_basis_vecs))
-            self.time_bumps_b = nn.Parameter(torch.empty(self.nb_timebumps, self.nb_time_basis_vecs, self.embedding_dim))
-            self.init_f(self.time_bumps_a, *weight_init_args)
-            self.init_f(self.time_bumps_b, *weight_init_args)
+            if self.arity_spec_timebumps:
+                self.head_time_bumps_a = nn.Parameter(torch.empty(self.nb_timebumps, self.max_time, self.nb_time_basis_vecs))
+                self.head_time_bumps_b = nn.Parameter(
+                    torch.empty(self.nb_timebumps, self.nb_time_basis_vecs, self.embedding_dim))
+                self.tail_time_bumps_a = nn.Parameter(
+                    torch.empty(self.nb_timebumps, self.max_time, self.nb_time_basis_vecs))
+                self.tail_time_bumps_b = nn.Parameter(
+                    torch.empty(self.nb_timebumps, self.nb_time_basis_vecs, self.embedding_dim))
+                self.init_f(self.head_time_bumps_a, *weight_init_args)
+                self.init_f(self.head_time_bumps_b, *weight_init_args)
+                self.init_f(self.tail_time_bumps_a, *weight_init_args)
+                self.init_f(self.tail_time_bumps_b, *weight_init_args)
+
+            else:
+                self.time_bumps_a = nn.Parameter(torch.empty(self.nb_timebumps, self.max_time, self.nb_time_basis_vecs))
+                self.time_bumps_b = nn.Parameter(torch.empty(self.nb_timebumps, self.nb_time_basis_vecs, self.embedding_dim))
+                self.init_f(self.time_bumps_a, *weight_init_args)
+                self.init_f(self.time_bumps_b, *weight_init_args)
         if self.use_r_factor:
             self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_factor, 1, 0.1)
@@ -852,14 +873,32 @@ class TempBoxE(BaseBoxE):
         bump_mask = bump_mask.unsqueeze(-1).expand(-1, -1, embedding_dim)
         return bumps * bump_mask
 
-    def compute_timebumps(self, ignore_dropout=False):
+    def compute_timebumps(self, is_tail=False, ignore_dropout=False):
         if not self.factorize_time:
-            return self.time_bumps if ignore_dropout else self.dropout_timebump(self.time_bumps)
-        bumps_a = self.time_bumps_a
+            if self.arity_spec_timebumps:
+                bumps = self.tail_time_bumps if is_tail else self.head_time_bumps
+            else:
+                bumps = self.time_bumps
+            return bumps if ignore_dropout else self.dropout_timebump(bumps)
+        ####
+        if self.arity_spec_timebumps:
+            bumps_a = self.tail_time_bumps_a if is_tail else self.head_time_bumps_a
+            bumps_b = self.tail_time_bumps_b if is_tail else self.tail_time_bumps_b
+        else:
+            bumps_a = self.time_bumps_a
+            bumps_b = self.time_bumps_b
         if self.norm_time_basis_vecs:
             bumps_a = torch.nn.functional.softmax(bumps_a, dim=1)
-        bumps = torch.matmul(bumps_a, self.time_bumps_b).transpose(0, 1)
+        bumps = torch.matmul(bumps_a, bumps_b).transpose(0, 1)
         return bumps if ignore_dropout else self.dropout_timebump(bumps)
+
+    def compute_combined_timebumps(self, ignore_dropout=False):
+        if not self.arity_spec_timebumps:
+            return self.compute_timebumps(ignore_dropout=ignore_dropout)
+        else:
+            head_bumps = self.compute_timebumps(is_tail=False, ignore_dropout=ignore_dropout)
+            tail_bumps = self.compute_timebumps(is_tail=True, ignore_dropout=ignore_dropout)
+            return torch.cat((head_bumps, tail_bumps), dim=1)
 
     def apply_rotation(self, vecs, angles):
         nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape
@@ -888,9 +927,10 @@ class TempBoxE(BaseBoxE):
         rel_idx = self.get_r_idx_by_id(tuples[:, 1]).to(self.device)
         e_h_idx = self.get_e_idx_by_id(tuples[:, 0]).to(self.device)
         e_t_idx = self.get_e_idx_by_id(tuples[:, 2]).to(self.device)
-        time_bumps = self.compute_timebumps()
-        time_vecs_h = self.index_bumps(time_bumps, time_idx)
-        time_vecs_t = self.index_bumps(time_bumps, time_idx)
+        time_bumps_h = self.compute_timebumps(is_tail=False)
+        time_bumps_t = self.compute_timebumps(is_tail=True)
+        time_vecs_h = self.index_bumps(time_bumps_h, time_idx)
+        time_vecs_t = self.index_bumps(time_bumps_t, time_idx)
         if self.use_r_rotation:
             time_vecs_h = self.apply_rotation(time_vecs_h, self.r_angles[rel_idx, :, :])
             time_vecs_t = self.apply_rotation(time_vecs_t, self.r_angles[rel_idx, :, :])

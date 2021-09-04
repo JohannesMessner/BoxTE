@@ -145,6 +145,9 @@ def parse_args(args):
                         help='Regularize all embedding vectors, concentrating them into a ball around zero.')
     parser.add_argument('--norm_time_basis_vecs', dest='norm_time_basis_vecs', action='store_true',
                         help='Apply softmax function to first term in time bump factorisation, along time axis.')
+    parser.add_argument('--arity_spec_timebumps', dest='arity_spec_timebumps', action='store_true',
+                        help='Make timebumps arity-specific, meaning that different bumps are learned'
+                             'for heads and tails of a fact.')
     parser.set_defaults(ignore_time=False)
     parser.set_defaults(norm_embeddings=False)
     parser.set_defaults(time_execution=False)
@@ -161,6 +164,7 @@ def parse_args(args):
     parser.set_defaults(use_time_reg=False)
     parser.set_defaults(use_ball_reg=False)
     parser.set_defaults(norm_time_basis_vecs=False)
+    parser.set_defaults(arity_spec_timebumps=False)
 
     args = parser.parse_args(args)
     if args.model_variant in ['StaticBoxE', 'static']:
@@ -237,7 +241,7 @@ def instantiate_model(args, kg, device):
                          use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
                          nb_time_basis_vecs=args.nb_time_basis_vecs,
                          norm_time_basis_vecs=args.norm_time_basis_vecs, use_r_t_factor=args.use_r_t_factor,
-                         dropout_p=args.timebump_dropout_p).to(device)
+                         dropout_p=args.timebump_dropout_p, arity_spec_timebumps=args.arity_spec_timebumps).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
@@ -295,7 +299,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             positive_emb, negative_emb = model(data, negatives)
             timer.log('end_forward')
             if args.use_time_reg:
-                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_timebumps(ignore_dropout=True))
+                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_combined_timebumps(ignore_dropout=True))
             else:
                 loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
@@ -433,7 +437,7 @@ def train_test_val(args, timestamp, device='cpu', saved_params_dir=None):
         model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     if args.use_time_reg:
-        loss_fn = BoxELoss(args, device=device, timebump_shape=model.compute_timebumps().shape)
+        loss_fn = BoxELoss(args, device=device, timebump_shape=model.compute_combined_timebumps().shape)
     else:
         loss_fn = BoxELoss(args, device=device)
 
