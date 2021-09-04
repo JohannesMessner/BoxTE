@@ -802,7 +802,7 @@ class TempBoxE(BaseBoxE):
     def __init__(self, embedding_dim, relation_ids, entity_ids, timestamps, device='cpu',
                  weight_init_args=(0, 1), norm_embeddings=False, time_weight=1, use_r_factor=False, use_e_factor=False,
                  nb_timebumps=1, use_r_rotation=False, use_e_rotation=False, nb_time_basis_vecs=-1,
-                 norm_time_basis_vecs=False, use_r_t_factor=False):
+                 norm_time_basis_vecs=False, use_r_t_factor=False, dropout_p=0.0):
         super().__init__(embedding_dim, relation_ids, entity_ids, timestamps, device, weight_init_args, norm_embeddings=False)
         if norm_embeddings:
             self.embedding_norm_fn_ = nn.Tanh()
@@ -814,6 +814,8 @@ class TempBoxE(BaseBoxE):
         self.use_r_rotation, self.use_e_rotation = use_r_rotation, use_e_rotation
         self.nb_timebumps = nb_timebumps
         self.time_weight = time_weight
+        self.droput_p = dropout_p
+        self.droput = nn.Dropout(dropout_p)
         if not self.nb_time_basis_vecs > 0:  # don't factorize time bumps, learn them directly/explicitly
             self.factorize_time = False
             self.time_bumps = nn.Parameter(torch.empty(self.max_time, self.nb_timebumps, self.embedding_dim))
@@ -840,13 +842,24 @@ class TempBoxE(BaseBoxE):
             self.e_angles = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.e_angles, 0, 0.1)
 
-    def compute_timebumps(self):
+    def dropout_timebump(self, bumps):
+        if self.droput_p == 0:
+            return bumps
+        max_time, nb_timebumps, embedding_dim = bumps.shape
+        bump_mask = self.droput(torch.ones(max_time, nb_timebumps, device=self.device))
+        if self.training:  # undo dropout scaling, not needed here since we're using a mask
+            bump_mask = bump_mask * (1 - self.droput_p)
+        bump_mask = bump_mask.unsqueeze(-1).expand(-1, -1, embedding_dim)
+        return bumps * bump_mask
+
+    def compute_timebumps(self, ignore_dropout=False):
         if not self.factorize_time:
-            return self.time_bumps
+            return self.time_bumps if ignore_dropout else self.dropout_timebump(self.time_bumps)
         bumps_a = self.time_bumps_a
         if self.norm_time_basis_vecs:
             bumps_a = torch.nn.functional.softmax(bumps_a, dim=1)
-        return torch.matmul(bumps_a, self.time_bumps_b).transpose(0, 1)
+        bumps = torch.matmul(bumps_a, self.time_bumps_b).transpose(0, 1)
+        return bumps if ignore_dropout else self.dropout_timebump(bumps)
 
     def apply_rotation(self, vecs, angles):
         nb_examples, batch_size, nb_timebumps, emb_dim = vecs.shape

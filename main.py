@@ -92,6 +92,8 @@ def parse_args(args):
                              "TempBoxE_RMLP_Plus, TempBoxE_M].")
     parser.add_argument('--de_time_prop', default=0.3, type=float,
                         help="Proportion of features considered temporal in the model varinat DEBoxE_B")
+    parser.add_argument('--timebump_dropout_p', default=0.0, type=float,
+                        help="Probability of any time bump being dropped out. Default is 0.")
     parser.add_argument('--time_reg_weight', default=0.01, type=float,
                        help="Weight given to the temporal regularizer, if enabled.")
     parser.add_argument('--ball_reg_weight', default=0.01, type=float,
@@ -234,7 +236,8 @@ def instantiate_model(args, kg, device):
                          use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
                          use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
                          nb_time_basis_vecs=args.nb_time_basis_vecs,
-                         norm_time_basis_vecs=args.norm_time_basis_vecs, use_r_t_factor=args.use_r_t_factor).to(device)
+                         norm_time_basis_vecs=args.norm_time_basis_vecs, use_r_t_factor=args.use_r_t_factor,
+                         dropout_p=args.timebump_dropout_p).to(device)
     elif args.model_variant in ['DEBoxE_TwoBumpsPerTime', 'de-twobumpspertime', '2bpt']:
         model = DEBoxE_TwoBumpsPerTime(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                                   weight_init_args=uniform_init_args, time_weight=args.time_weight,
@@ -279,6 +282,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
     if args.time_execution:
         timer.activate()
     for i_epoch in range(args.num_epochs):
+        model.train()
         timer.log('start_epoch')
         epoch_losses = []
         for i_batch, data in enumerate(trainloader):
@@ -291,7 +295,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             positive_emb, negative_emb = model(data, negatives)
             timer.log('end_forward')
             if args.use_time_reg:
-                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_timebumps())
+                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_timebumps(ignore_dropout=True))
             else:
                 loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
@@ -343,6 +347,7 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
 
 
 def test_per_timestep(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1024):
+    model.eval()
     with torch.no_grad():
         ranks_head, ranks_tail = [], []
         timestamps = []
@@ -384,6 +389,7 @@ def test_per_timestep(kg, dataloader, model, args, device='cpu', corrupt_triples
 
 
 def test(kg, dataloader, model, args, device='cpu', corrupt_triples_batch_size=1024):
+    model.eval()
     with torch.no_grad():
         ranks_head, ranks_tail = [], []
         for i_batch, batch in enumerate(dataloader):
