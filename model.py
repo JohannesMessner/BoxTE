@@ -848,8 +848,15 @@ class TempBoxE(BaseBoxE):
                 self.init_f(self.time_bumps_a, *weight_init_args)
                 self.init_f(self.time_bumps_b, *weight_init_args)
         if self.use_r_factor:
-            self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
-            torch.nn.init.normal_(self.r_factor, 1, 0.1)
+            if self.arity_spec_timebumps:
+                self.head_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+                self.tail_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+                torch.nn.init.normal_(self.head_r_factor, 1, 0.1)
+                torch.nn.init.normal_(self.tail_r_factor, 1, 0.1)
+            else:
+                self.head_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+                self.tail_r_factor = self.head_r_factor
+                torch.nn.init.normal_(self.r_factor, 1, 0.1)
         if self.use_r_t_factor:
             self.r_t_factor = nn.Parameter(torch.empty(self.nb_relations, self.max_time, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_t_factor, 1, 0.1)
@@ -943,8 +950,8 @@ class TempBoxE(BaseBoxE):
             time_vecs_h = to_cartesian(time_vecs_h, device=self.device)
             time_vecs_t = to_cartesian(time_vecs_t, device=self.device)
         if self.use_r_factor:
-            time_vecs_h *= self.r_factor[rel_idx, :, :]
-            time_vecs_t *= self.r_factor[rel_idx, :, :]
+            time_vecs_h *= self.head_r_factor[rel_idx, :, :]
+            time_vecs_t *= self.tail_r_factor[rel_idx, :, :]
         if self.use_e_factor:
             time_vecs_h *= self.e_factor[e_h_idx, :, :]
             time_vecs_t *= self.e_factor[e_t_idx, :, :]
