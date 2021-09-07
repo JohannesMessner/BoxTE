@@ -8,8 +8,10 @@ class BoxELoss():
     def __init__(self, args, device='cpu', timebump_shape=None):
         self.use_time_reg = args.use_time_reg
         self.use_ball_reg = args.use_ball_reg
+        self.use_rel_reg = args.use_rel_reg
         self.time_reg_weight = args.time_reg_weight
         self.ball_reg_weight = args.ball_reg_weight
+        self.rel_reg_weight = args.rel_reg_weight
         self.time_reg_order = args.time_reg_order
         self.ball_reg_order = args.ball_reg_order
         if args.loss_type in ['uniform', 'u']:
@@ -27,12 +29,14 @@ class BoxELoss():
                 raise ValueError('Time reg is enabled but timebump shape is not provided.')
             self.diff_matrix = make_diff_matrix(timebump_shape, device=device)
 
-    def __call__(self, positive_tuples, negative_tuples, time_bumps=None):
+    def __call__(self, positive_tuples, negative_tuples, time_bumps=None, diff_factors=None):
         l = self.loss_fn(positive_tuples, negative_tuples, **self.fn_kwargs)
         if self.use_time_reg:
             l = l + self.time_reg_weight * self.time_reg(time_bumps, norm_ord=self.time_reg_order)
         if self.use_ball_reg:
             l = l + self.ball_reg_weight * self.ball_reg(entities=positive_tuples[0], relations=positive_tuples[1], norm_ord=self.ball_reg_order)
+        if self.use_rel_reg:
+            l = l + self.rel_reg_weight * self.rel_reg(diff_factors)
         return l
 
     def time_reg(self, time_bumps, norm_ord=4):
@@ -51,6 +55,9 @@ class BoxELoss():
                 + torch.linalg.norm(tails, ord=norm_ord, dim=-1) ** norm_ord
                 + torch.linalg.norm(head_centers, ord=norm_ord, dim=-1) ** norm_ord
                 + torch.linalg.norm(tail_centers, ord=norm_ord, dim=-1) ** norm_ord).mean()
+
+    def rel_reg(self, diff_factors, norm_ord=4):
+        return torch.linalg.norm(diff_factors, ord=norm_ord, dim=0) ** norm_ord
 
 
 def make_diff_matrix(timebump_shape, device):

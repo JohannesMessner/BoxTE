@@ -851,8 +851,10 @@ class TempBoxE(BaseBoxE):
             if self.arity_spec_timebumps:
                 self.head_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
                 self.tail_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+                self.r_diff_factor = nn.Parameter(torch.empty(self.nb_relations,))
                 torch.nn.init.normal_(self.head_r_factor, 1, 0.1)
                 torch.nn.init.normal_(self.tail_r_factor, 1, 0.1)
+                torch.nn.init.normal_(self.r_diff_factor, 0, 0.1)
             else:
                 self.head_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
                 self.tail_r_factor = self.head_r_factor
@@ -960,6 +962,11 @@ class TempBoxE(BaseBoxE):
             time_vecs_t *= self.r_t_factor[rel_idx, time_idx, :, :]
         time_vecs_h, time_vecs_t = time_vecs_h.sum(dim=2), time_vecs_t.sum(dim=2)  # sum over all time bumps
         time_vecs = torch.stack((time_vecs_h, time_vecs_t), dim=2)  # apply to both heads and tails
+        time_vecs_mean = torch.mean(time_vecs, dim=2)
+        diff_facs = self.r_diff_factor[rel_idx].unsqueeze(-1).expand(-1, -1, self.embedding_dim)
+        time_vecs_h = time_vecs_mean + torch.sigmoid(diff_facs) * (- time_vecs_mean + time_vecs_h)
+        time_vecs_t = time_vecs_mean + torch.sigmoid(diff_facs) * (- time_vecs_mean + time_vecs_t)
+        time_vecs = torch.stack((time_vecs_h, time_vecs_t), dim=2)
         entity_embs = entity_embs + self.time_weight * time_vecs
         return self.embedding_norm_fn_(entity_embs), self.embedding_norm_fn_(relation_embs), None
 

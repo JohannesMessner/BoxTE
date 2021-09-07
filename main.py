@@ -98,6 +98,8 @@ def parse_args(args):
                        help="Weight given to the temporal regularizer, if enabled.")
     parser.add_argument('--ball_reg_weight', default=0.01, type=float,
                         help="Weight given to the ball regularizer, if enabled.")
+    parser.add_argument('--rel_reg_weight', default=0.01, type=float,
+                        help="Weight given to the relation regularizer, if enabled.")
     parser.add_argument('--time_reg_order', default=4, type=int,
                         help="Order ('p') of time regularizer norm.")
     parser.add_argument('--ball_reg_order', default=4, type=int,
@@ -143,6 +145,8 @@ def parse_args(args):
                         help='Regularize over time bumps, favouring smoothness')
     parser.add_argument('--use_ball_reg', dest='use_ball_reg', action='store_true',
                         help='Regularize all embedding vectors, concentrating them into a ball around zero.')
+    parser.add_argument('--use_rel_reg', dest='use_rel_reg', action='store_true',
+                        help='Regularize differences between timebumps between arities.')
     parser.add_argument('--norm_time_basis_vecs', dest='norm_time_basis_vecs', action='store_true',
                         help='Apply softmax function to first term in time bump factorisation, along time axis.')
     parser.add_argument('--arity_spec_timebumps', dest='arity_spec_timebumps', action='store_true',
@@ -298,8 +302,8 @@ def train_validate(kg, trainloader, valloader, model, loss_fn, optimizer, args, 
             timer.log('start_forward')
             positive_emb, negative_emb = model(data, negatives)
             timer.log('end_forward')
-            if args.use_time_reg:
-                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_combined_timebumps(ignore_dropout=True))
+            if args.use_time_reg or args.use_rel_reg:
+                loss = loss_fn(positive_emb, negative_emb, time_bumps=model.compute_combined_timebumps(ignore_dropout=True), diff_factors=model.r_diff_factor)
             else:
                 loss = loss_fn(positive_emb, negative_emb)
             if not loss.isfinite():
