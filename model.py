@@ -872,19 +872,35 @@ class TempBoxE(BaseBoxE):
             torch.nn.init.normal_(self.e_angles, 0, 0.1)
 
     def load_state_dict(self, state_dict, strict=True):
+        # enable compatibility with params saved from older code versions
+        if hasattr(self, 'head_r_factor') and 'head_r_factor' not in state_dict:
+            state_dict['head_r_factor'] = state_dict['r_factor']
+            state_dict['head_r_factor'] = state_dict['r_factor']
+        if not hasattr(self, 'r_factor') and 'r_factor' in state_dict:
+            state_dict.pop('r_factor', None)
+        if hasattr(self, 'head_time_bumps') and 'head_time_bumps' not in state_dict:
+            state_dict['head_time_bumps'] = state_dict['time_bumps']
+            state_dict['tail_time_bumps'] = state_dict['time_bumps']
+        if not hasattr(self, 'time_bumps') and 'time_bumps' in state_dict:
+            state_dict.pop('time_bumps', None)
+        if hasattr(self, 'head_time_bumps_a') and 'head_time_bumps_a' not in state_dict:
+            state_dict['head_time_bumps_a'] = state_dict['time_bumps_a']
+            state_dict['tail_time_bumps_a'] = state_dict['time_bumps_a']
+            state_dict['head_time_bumps_b'] = state_dict['time_bumps_b']
+            state_dict['tail_time_bumps_b'] = state_dict['time_bumps_b']
+        if not hasattr(self, 'time_bumps_a') and 'time_bumps_a' in state_dict:
+            state_dict.pop('time_bumps_a', None)
+            state_dict.pop('time_bumps_b', None)
         super().load_state_dict(state_dict, strict)
+        # enable compatibility with params saved from older code versions
         if not self.arity_spec_timebumps:
             if self.use_r_factor:
-                self.head_r_factor = self.r_factor
-                self.tail_r_factor = self.r_factor
+                self.head_r_factor = self.tail_r_factor
             if not self.factorize_time:
-                self.head_time_bumps = self.time_bumps
-                self.tail_time_bumps = self.time_bumps
+                self.head_time_bumps = self.tail_time_bumps
             else:
-                self.head_time_bumps_a = self.time_bumps_a
-                self.tail_time_bumps_a = self.tail_time_bumps
-                self.head_time_bumps_b = self.time_bumps_b
-                self.tail_time_bumps_b = self.time_bumps_b
+                self.head_time_bumps_a = self.tail_time_bumps_a
+                self.head_time_bumps_b = self.tail_time_bumps_b
 
     def dropout_timebump(self, bumps):
         if self.droput_p == 0:
