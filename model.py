@@ -854,9 +854,10 @@ class TempBoxE(BaseBoxE):
                 torch.nn.init.normal_(self.head_r_factor, 1, 0.1)
                 torch.nn.init.normal_(self.tail_r_factor, 1, 0.1)
             else:
-                self.head_r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
-                self.tail_r_factor = self.head_r_factor
-                torch.nn.init.normal_(self.head_r_factor, 1, 0.1)
+                self.r_factor = nn.Parameter(torch.empty(self.nb_relations, self.nb_timebumps, 1))
+                torch.nn.init.normal_(self.r_factor, 1, 0.1)
+                self.head_r_factor = self.r_factor
+                self.tail_r_factor = self.r_factor
         if self.use_r_t_factor:
             self.r_t_factor = nn.Parameter(torch.empty(self.nb_relations, self.max_time, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.r_t_factor, 1, 0.1)
@@ -869,6 +870,21 @@ class TempBoxE(BaseBoxE):
         if self.use_e_rotation:
             self.e_angles = nn.Parameter(torch.empty(self.nb_entities, self.nb_timebumps, 1))
             torch.nn.init.normal_(self.e_angles, 0, 0.1)
+
+    def load_state_dict(self, state_dict, strict=True):
+        super().load_state_dict(state_dict, strict)
+        if not self.arity_spec_timebumps:
+            if self.use_r_factor:
+                self.head_r_factor = self.r_factor
+                self.tail_r_factor = self.r_factor
+            if not self.factorize_time:
+                self.head_time_bumps = self.time_bumps
+                self.tail_time_bumps = self.time_bumps
+            else:
+                self.head_time_bumps_a = self.time_bumps_a
+                self.tail_time_bumps_a = self.tail_time_bumps
+                self.head_time_bumps_b = self.time_bumps_b
+                self.tail_time_bumps_b = self.time_bumps_b
 
     def dropout_timebump(self, bumps):
         if self.droput_p == 0:
