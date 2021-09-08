@@ -66,7 +66,7 @@ def parse_args(args):
                         help="Toggle between time agnostic ('a') and time dependent ('d') negative sampling.")
     parser.add_argument('--metrics_batch_size', default=-1, type=int,
                         help="Perform metrics calculation in batches of given size. Default is no batching / a single batch.")
-    parser.add_argument('--model_variant', default='base', type=str,
+    parser.add_argument('--model_variant', default='BoxTE', type=str,
                         help="Choose a model variant from [BoxTE, BoxE, DE-BoxE, TBoxE].")
     parser.add_argument('--de_time_prop', default=0.3, type=float,
                         help="Proportion of features considered temporal in the model variant DE-BoxE")
