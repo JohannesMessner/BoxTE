@@ -139,7 +139,8 @@ def parse_args(args):
         args.static = False
     if (args.use_time_reg or args.use_ball_reg) and not args.model_variant in ['BoxTE', 'boxte']:
         raise ValueError('Regularisers only available with BoxTE model.')
-    args.load_params_path = os.path.abspath(args.load_params_path)
+    if args.load_params_path:
+        args.load_params_path = os.path.abspath(args.load_params_path)
     args.train_path = os.path.abspath(args.train_path)
     args.test_path = os.path.abspath(args.test_path)
     args.valid_path = os.path.abspath(args.valid_path)
