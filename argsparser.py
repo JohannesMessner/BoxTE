@@ -136,4 +136,6 @@ def parse_args(args):
         args.static = True
     else:
         args.static = False
+    if (args.use_time_reg or args.use_ball_reg) and not args.model_variant in ['BoxTE', 'boxte']:
+        raise ValueError('Regularisers only available with BoxTE model.')
     return args

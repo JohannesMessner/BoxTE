@@ -154,7 +154,7 @@ def train_test_val(args, timestamp, device='cpu', saved_params_dir=None):
         params = torch.load(args.load_params_path, map_location=device)
         model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    if args.use_time_reg:
+    if args.use_time_reg and isinstance(model, BoxTE):
         loss_fn = BoxELoss(args, device=device, timebump_shape=model.compute_combined_timebumps().shape)
     else:
         loss_fn = BoxELoss(args, device=device)

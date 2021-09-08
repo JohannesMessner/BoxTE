@@ -5,7 +5,7 @@ import numbers
 
 
 class TempKgLoader():
-    """Loads datasets, holds data, provides dataloaders, and samples negative facts"""
+    """Loads datasets, holds data, provides dataloaders, and samples negative/corrupted facts"""
 
     def __init__(self, train_path, test_path, valid_path, truncate=-1, data_format='', no_time_info=False, device='cpu', entity_subset=-1, kg_is_static=False):
         """
