@@ -1,83 +1,7 @@
 import logging
-
 import torch
 import numpy as np
 import numbers
-
-
-def remove_static_facts_yago_unfolded(path_to_file, out_name):
-    """
-    Takes unfolded yago file and removes all facts without a time stamp
-    """
-    dynamic_facts = ''
-    with open(path_to_file, 'r') as f:
-        lines = f.read().splitlines()
-        for line in lines:
-            line_split = tuple(line.split('\t'))
-            if len(line_split) == 3:  # don't include facts without time stamp
-                pass
-            elif len(line_split) == 4:
-                h, r, t, time = line_split
-                dynamic_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
-    with open(out_name, 'w') as f:
-        print(dynamic_facts, file=f)
-
-
-def unfold_yago(path_to_file, out_name):
-    unfolded_facts = ''
-    since_dict = dict()
-    no_beginning_facts = []
-    with open(path_to_file, 'r') as f:
-        lines = f.read().splitlines()
-        for line in lines:
-            line_split = tuple(line.split('\t'))
-            if len(line_split) == 3: # no need to change anything
-                h, r, t = line_split
-                unfolded_facts += '\n{}\t{}\t{}'.format(h, r, t)
-            elif len(line_split) == 4: # ignore token without time stamp
-                h, r, t, token = line_split
-                unfolded_facts += '\n{}\t{}\t{}'.format(h, r, t)
-            else:
-                h, r, t, token, time = line_split
-                time = time.split('-')[0][1:] # only keep year level info
-                if token == '<occursSince>':
-                    since_dict[h+' '+r+' '+t] = time
-                elif token == '<occursUntil>':
-                    beginning_time = since_dict[h+' '+r+' '+t]
-                    if beginning_time:
-                        for interval_time in range(int(beginning_time), int(time)+1, 1):
-                            unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, str(interval_time))
-                        del since_dict[h+' '+r+' '+t]
-                    else:
-                        no_beginning_facts.append((h, r, t, token, time))
-    for h, r, t, token, time in no_beginning_facts:
-        unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
-    for k in since_dict.keys():
-        time = since_dict[k]
-        h, r, t = k.split(' ')
-        unfolded_facts += '\n{}\t{}\t{}\t{}'.format(h, r, t, time)
-    with open(out_name, 'w') as f:
-        print(unfolded_facts, file=f)
-
-
-def token_to_relation_yago(path_to_file, out_name):
-    processed_facts = ''
-    with open(path_to_file, 'r') as f:
-        lines = f.read().splitlines()
-        for line in lines:
-            line_split = tuple(line.split('\t'))
-            if len(line_split) == 3:  # no need to change anything
-                h, r, t = line_split
-                processed_facts += '\n{}\t{}\t{}'.format(h, r, t)
-            elif len(line_split) == 4:  # ignore token without time stamp
-                h, r, t, token = line_split
-                processed_facts += '\n{}\t{}\t{}'.format(h, r, t)
-            else:  # combine temp token and relation
-                h, r, t, token, time = line_split
-                time = time.split('-')[0][1:] # only keep year level info
-                processed_facts += '\n{}\t{}\t{}\t{}'.format(h, token + '/' + r, t, time)
-    with open(out_name, 'w') as f:
-        print(processed_facts, file=f)
 
 
 class TempKgLoader():
@@ -139,7 +63,6 @@ class TempKgLoader():
                 if int_time < min_time:
                     min_time = int_time
         return max_time, min_time
-
 
     def subset_data_by_entities(self, nb_entities):
         accepted_es = []
@@ -444,6 +367,3 @@ class TempKgLoader():
         if return_batch_size > 0:
             return torch.split(sampled_tuples, return_batch_size), torch.split(filter_idx, return_batch_size)
         return (sampled_tuples,), (filter_idx,)
-    '''
-    Replaces head by all other entities and filters out known positives
-    '''

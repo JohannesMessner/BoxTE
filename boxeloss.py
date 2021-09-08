@@ -3,7 +3,7 @@ import torch
 
 class BoxELoss():
     """
-    Callable that will either perform uniform or self-adversarial loss, depending on the setting in @:param options
+    Callable that will either perform uniform, self-adversarial, or cross entroy loss, depending on the setting in @:param args
     """
     def __init__(self, args, device='cpu', timebump_shape=None):
         self.use_time_reg = args.use_time_reg
@@ -36,12 +36,16 @@ class BoxELoss():
         return l
 
     def time_reg(self, time_bumps, norm_ord=4):
+        """Temporal smoothness regulariser from the paper'Tensor Decomposition for Temporal Knowledge Base Completion',
+        Lacroix et. al."""
         # max_time, nb_timebumps, embedding_dim = time_bumps.shape
         time_bumps = time_bumps.transpose(0, 1)
         diffs = self.diff_matrix.matmul(time_bumps)
         return (torch.linalg.norm(diffs, ord=norm_ord, dim=2) ** norm_ord).mean()
 
     def ball_reg(self, entities, relations, norm_ord=4):
+        """Regulariser inspired by the paper 'ChronoR: Rotation Based Temporal Knowledge Graph Embedding',
+        Sadeghian et. al."""
         heads = entities[:, :, 0, :]
         tails = entities[:, :, 1, :]
         box_centers = (relations[:, :, :, 0, :] + relations[:, :, :, 1, :]) / 2
