@@ -2,7 +2,7 @@
 
 # BoxTE
 BoxTE is a box embedding model for temporal knowledge graph completion (TKGC), developed by Ralph Abboud, Ismail Ilkan Ceylan, and myself.
-It achieves state-of-the art performance on multiple TKGC benchmarks, while being fully expressive, inherently interpretable, and capturing various logical inference patterns.
+It achieves state-of-the art performance on multiple TKGC benchmarks, while being fully expressive, inherently interpretable, and capturing various logical inference patterns. Get the AAAI paper here: https://arxiv.org/abs/2109.08970
 
 This repository contains the source code for the BoxTE embedding model and additionally contains scripts for training and testing, as well TKGC datasets.
 
