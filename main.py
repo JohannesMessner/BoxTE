@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 import timing
 from metrics import mean_rank, mean_rec_rank, hits_at_k, rank
-from model import TBoxE, BoxE, BoxTE, DEBoxE
+from model import TBoxE, BoxE, LegacyBoxTE, DEBoxE
 from boxeloss import BoxELoss
 from data_utils import TempKgLoader
 from argsparser import parse_args
@@ -26,14 +26,14 @@ def instantiate_model(args, kg, device):
                       weight_init_args=uniform_init_args,
                       norm_embeddings=args.norm_embeddings, device=device).to(device)
     elif args.model_variant in ['BoxTE', 'boxte']:
-        model = BoxTE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
-                      weight_init_args=uniform_init_args, time_weight=args.time_weight,
-                      norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
-                      use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
-                      use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
-                      nb_time_basis_vecs=args.nb_time_basis_vecs,
-                      norm_time_basis_vecs=args.norm_time_basis_vecs, use_r_t_factor=args.use_r_t_factor,
-                      dropout_p=args.timebump_dropout_p, arity_spec_timebumps=args.arity_spec_timebumps).to(device)
+        model = LegacyBoxTE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
+                            weight_init_args=uniform_init_args, time_weight=args.time_weight,
+                            norm_embeddings=args.norm_embeddings, use_r_factor=args.use_r_factor,
+                            use_e_factor=args.use_e_factor, device=device, nb_timebumps=args.nb_timebumps,
+                            use_r_rotation=args.use_r_rotation, use_e_rotation=args.use_e_rotation,
+                            nb_time_basis_vecs=args.nb_time_basis_vecs,
+                            norm_time_basis_vecs=args.norm_time_basis_vecs, use_r_t_factor=args.use_r_t_factor,
+                            dropout_p=args.timebump_dropout_p, arity_spec_timebumps=args.arity_spec_timebumps).to(device)
     elif args.model_variant in ['DEBoxE', 'DE-Boxe', 'deboxe', 'de-boxe']:
         model = DEBoxE(args.embedding_dim, kg.relation_ids, kg.entity_ids, kg.get_timestamps(),
                        weight_init_args=uniform_init_args,
@@ -154,7 +154,7 @@ def train_test_val(args, timestamp, device='cpu', saved_params_dir=None):
         params = torch.load(args.load_params_path, map_location=device)
         model.load_state_dict(params)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    if args.use_time_reg and isinstance(model, BoxTE):
+    if args.use_time_reg and isinstance(model, LegacyBoxTE):
         loss_fn = BoxELoss(args, device=device, timebump_shape=model.compute_combined_timebumps().shape)
     else:
         loss_fn = BoxELoss(args, device=device)
